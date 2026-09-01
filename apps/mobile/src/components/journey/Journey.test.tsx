@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { act, create } from 'react-test-renderer';
 import JourneyScreen from '../../../app/journey';
+import { JourneyIntelligenceSection } from './JourneyIntelligenceSection';
 
 const mockPush = jest.fn();
 
@@ -36,6 +37,225 @@ const ROUTE = {
   coordinates: [START, DESTINATION],
 };
 
+const JOURNEY_PLAN = {
+  route: ROUTE,
+  departureTime: '2026-09-01T16:00:00.000Z',
+  estimatedArrivalTime: '2026-09-01T16:18:00.000Z',
+  durationMinutes: 18,
+  checkpoints: [
+    { sequence: 1, point: START, distanceFromStartKm: 0, estimatedArrivalTime: '2026-09-01T16:00:00.000Z' },
+    {
+      sequence: 2,
+      point: DESTINATION,
+      distanceFromStartKm: 12.7,
+      estimatedArrivalTime: '2026-09-01T16:18:00.000Z',
+    },
+  ],
+};
+
+function makeWeatherCheckpoint(
+  overrides: Partial<{
+    sequence: number;
+    distanceFromStartKm: number;
+    estimatedArrivalTime: string;
+    weatherCode: 'clear' | 'rain' | 'thunderstorm';
+    temperature: number;
+    rainProbability: number;
+    weather: null;
+  }> = {},
+) {
+  const { weather, ...rest } = overrides;
+  return {
+    sequence: rest.sequence ?? 1,
+    point: START,
+    distanceFromStartKm: rest.distanceFromStartKm ?? 0,
+    estimatedArrivalTime: rest.estimatedArrivalTime ?? '2026-09-01T16:00:00.000Z',
+    weather:
+      weather === null
+        ? null
+        : {
+            timestamp: rest.estimatedArrivalTime ?? '2026-09-01T16:00:00.000Z',
+            temperature: rest.temperature ?? 31,
+            precipitation: 0,
+            precipitationProbability: rest.rainProbability ?? 0,
+            rainProbability: rest.rainProbability ?? 0,
+            humidity: 70,
+            windSpeed: 10,
+            uvIndex: 5,
+            weatherCode: rest.weatherCode ?? 'clear',
+          },
+  };
+}
+
+const DETERIORATING_WEATHER_PLAN = {
+  route: ROUTE,
+  departureTime: '2026-09-01T16:00:00.000Z',
+  estimatedArrivalTime: '2026-09-01T16:18:00.000Z',
+  durationMinutes: 18,
+  checkpoints: [
+    makeWeatherCheckpoint({
+      sequence: 1,
+      distanceFromStartKm: 0,
+      estimatedArrivalTime: '2026-09-01T16:00:00.000Z',
+      weatherCode: 'clear',
+      temperature: 31,
+      rainProbability: 0,
+    }),
+    makeWeatherCheckpoint({
+      sequence: 2,
+      distanceFromStartKm: 7.2,
+      estimatedArrivalTime: '2026-09-01T16:12:00.000Z',
+      weatherCode: 'rain',
+      temperature: 29,
+      rainProbability: 72,
+    }),
+    makeWeatherCheckpoint({
+      sequence: 3,
+      distanceFromStartKm: 12.7,
+      estimatedArrivalTime: '2026-09-01T16:18:00.000Z',
+      weatherCode: 'rain',
+      temperature: 28,
+      rainProbability: 78,
+    }),
+  ],
+  summary: {
+    weatherAvailableCheckpoints: 3,
+    weatherUnavailableCheckpoints: 0,
+    rainAffectedCheckpointCount: 2,
+    firstRainCheckpointSequence: 2,
+    transitions: [{ fromSequence: 1, toSequence: 2, fromCondition: 'clear', toCondition: 'rain' }],
+  },
+};
+
+const PARTIAL_WEATHER_PLAN = {
+  ...DETERIORATING_WEATHER_PLAN,
+  checkpoints: [
+    DETERIORATING_WEATHER_PLAN.checkpoints[0],
+    makeWeatherCheckpoint({ sequence: 2, distanceFromStartKm: 7.2, weather: null }),
+    DETERIORATING_WEATHER_PLAN.checkpoints[2],
+  ],
+  summary: {
+    weatherAvailableCheckpoints: 2,
+    weatherUnavailableCheckpoints: 1,
+    rainAffectedCheckpointCount: 1,
+    firstRainCheckpointSequence: 3,
+    transitions: [],
+  },
+};
+
+const ALL_UNAVAILABLE_WEATHER_PLAN = {
+  ...DETERIORATING_WEATHER_PLAN,
+  checkpoints: DETERIORATING_WEATHER_PLAN.checkpoints.map((checkpoint) => ({
+    ...checkpoint,
+    weather: null,
+  })),
+  summary: {
+    weatherAvailableCheckpoints: 0,
+    weatherUnavailableCheckpoints: 3,
+    rainAffectedCheckpointCount: 0,
+    firstRainCheckpointSequence: null,
+    transitions: [],
+  },
+};
+
+const RAIN_INTELLIGENCE = {
+  journeyWeatherPlan: DETERIORATING_WEATHER_PLAN,
+  analysis: {
+    riskLevel: 'medium' as const,
+    primaryConcern: 'Rain probability is elevated during part of your journey.',
+    factors: ['RAIN_DURING_JOURNEY' as const],
+    affectedCheckpointSequences: [2],
+    affectedSegment: { fromDistanceKm: 3.6, toDistanceKm: 9.4 },
+    firstAffectedCheckpointSequence: 2,
+    transitions: DETERIORATING_WEATHER_PLAN.summary.transitions,
+    weatherAvailableCheckpoints: 3,
+    weatherUnavailableCheckpoints: 0,
+    confidence: 'high' as const,
+    reasons: [
+      'Rain probability is elevated during part of your journey. (checkpoint 2, 7.2 km).',
+      'Multiple checkpoints are affected.',
+    ],
+  },
+  recommendation: {
+    type: 'CAUTION' as const,
+    priority: 'medium' as const,
+    title: 'Rain expected during part of your run',
+    message: 'Rain probability is elevated during part of your journey.',
+    action: 'Carry rain protection or plan an alternate window.',
+    reasons: ['RAIN_DURING_JOURNEY' as const],
+  },
+};
+
+const COMMUTER_RAIN_INTELLIGENCE = {
+  ...RAIN_INTELLIGENCE,
+  recommendation: {
+    ...RAIN_INTELLIGENCE.recommendation,
+    title: 'Rain may affect part of your commute',
+    action: 'Allow extra travel time and bring rain gear.',
+  },
+};
+
+const FAVORABLE_INTELLIGENCE = {
+  journeyWeatherPlan: DETERIORATING_WEATHER_PLAN,
+  analysis: {
+    riskLevel: 'low' as const,
+    primaryConcern: 'Conditions look favorable along your journey.',
+    factors: ['FAVORABLE_JOURNEY' as const],
+    affectedCheckpointSequences: [],
+    affectedSegment: null,
+    firstAffectedCheckpointSequence: null,
+    transitions: [],
+    weatherAvailableCheckpoints: 3,
+    weatherUnavailableCheckpoints: 0,
+    confidence: 'high' as const,
+    reasons: ['Conditions look favorable along your journey.'],
+  },
+  recommendation: {
+    type: 'FAVORABLE' as const,
+    priority: 'low' as const,
+    title: 'Great conditions for your run',
+    message: 'Conditions look favorable throughout your journey.',
+    action: 'Enjoy your run.',
+    reasons: ['FAVORABLE_JOURNEY' as const],
+  },
+};
+
+const PARTIAL_INTELLIGENCE = {
+  journeyWeatherPlan: PARTIAL_WEATHER_PLAN,
+  analysis: {
+    ...RAIN_INTELLIGENCE.analysis,
+    weatherAvailableCheckpoints: 2,
+    weatherUnavailableCheckpoints: 1,
+    confidence: 'medium' as const,
+  },
+  recommendation: RAIN_INTELLIGENCE.recommendation,
+};
+
+const UNAVAILABLE_INTELLIGENCE = {
+  journeyWeatherPlan: ALL_UNAVAILABLE_WEATHER_PLAN,
+  analysis: {
+    riskLevel: 'low' as const,
+    primaryConcern: 'Weather information is unavailable for this journey.',
+    factors: [] as const,
+    affectedCheckpointSequences: [],
+    affectedSegment: null,
+    firstAffectedCheckpointSequence: null,
+    transitions: [],
+    weatherAvailableCheckpoints: 0,
+    weatherUnavailableCheckpoints: 3,
+    confidence: 'low' as const,
+    reasons: ['No weather data could be retrieved for this journey.'],
+  },
+  recommendation: {
+    type: 'FAVORABLE' as const,
+    priority: 'low' as const,
+    title: 'Not enough data',
+    message: 'Weather information is unavailable for this journey.',
+    action: 'Try again later.',
+    reasons: [] as const,
+  },
+};
+
 function journeyState(overrides: Partial<ReturnType<typeof useJourney>> = {}) {
   return {
     start: null,
@@ -53,8 +273,8 @@ function journeyState(overrides: Partial<ReturnType<typeof useJourney>> = {}) {
     selectDestination: jest.fn(),
     getRoute: jest.fn(),
     planTimeline: jest.fn().mockResolvedValue(undefined),
-    analyzeWeather: jest.fn(),
-    analyzeJourney: jest.fn(),
+    analyzeWeather: jest.fn().mockResolvedValue(undefined),
+    analyzeJourney: jest.fn().mockResolvedValue(undefined),
     setPersona: jest.fn(),
     setPreferredTimeOfDay: jest.fn(),
     refresh: jest.fn(),
@@ -275,5 +495,307 @@ describe('Journey screen', () => {
     mockedUseJourney.mockReturnValue(journeyState({ start: START, destination: DESTINATION, route: ROUTE }));
     const root = await renderJsonAndFlush();
     expect(textContains(root, 'Analyze Weather')).toBe(true);
+  });
+
+  describe('Journey Weather experience', () => {
+    function weatherReadyState(overrides: Partial<ReturnType<typeof useJourney>> = {}) {
+      return journeyState({
+        start: START,
+        destination: DESTINATION,
+        route: ROUTE,
+        journeyPlan: JOURNEY_PLAN as never,
+        journeyWeather: DETERIORATING_WEATHER_PLAN as never,
+        ...overrides,
+      });
+    }
+
+    it('renders the weather timeline with checkpoints', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'WEATHER TIMELINE')).toBe(true);
+      expect(textContains(root, 'START')).toBe(true);
+      expect(textContains(root, 'DESTINATION')).toBe(true);
+    });
+
+    it('renders ETA, distance, temperature, and condition for a checkpoint', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, '31°')).toBe(true);
+      expect(textContains(root, 'Clear')).toBe(true);
+      expect(textContains(root, '7.2 km')).toBe(true);
+    });
+
+    it('renders rain probability when available', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, '72% rain probability')).toBe(true);
+    });
+
+    it('renders the weather hero with a consistent-vs-changing message', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'WEATHER ALONG YOUR ROUTE')).toBe(true);
+      expect(textContains(root, 'Conditions change during your journey.')).toBe(true);
+    });
+
+    it('renders the backend-provided weather transition', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'Clear → Rainy')).toBe(true);
+    });
+
+    it('renders the journey weather summary', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'JOURNEY WEATHER')).toBe(true);
+      expect(textContains(root, 'Rain expected')).toBe(true);
+      expect(textContains(root, '2 checkpoints affected')).toBe(true);
+    });
+
+    it('highlights the first rain checkpoint', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'Rain begins around here')).toBe(true);
+    });
+
+    it('renders all checkpoints, including unavailable ones, on partial failure', async () => {
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({ journeyWeather: PARTIAL_WEATHER_PLAN as never }),
+      );
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, "We couldn't retrieve weather here.")).toBe(true);
+      expect(textContains(root, 'Weather coverage')).toBe(true);
+      expect(textContains(root, '2 / 3 checkpoints')).toBe(true);
+      // Still shows the available checkpoints' real data, not fabricated values.
+      expect(textContains(root, '31°')).toBe(true);
+      expect(textContains(root, '28°')).toBe(true);
+    });
+
+    it('never shows a temperature for a checkpoint with no weather', async () => {
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({ journeyWeather: PARTIAL_WEATHER_PLAN as never }),
+      );
+      const root = await renderJsonAndFlush();
+      const cards = root.root.findAll(
+        (node) =>
+          typeof node.type !== 'string' && instanceText(node).includes("couldn't retrieve weather"),
+      );
+      expect(cards.length).toBeGreaterThan(0);
+    });
+
+    it('shows the all-weather-unavailable state without destroying the route', async () => {
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({ journeyWeather: ALL_UNAVAILABLE_WEATHER_PLAN as never }),
+      );
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'WEATHER UNAVAILABLE')).toBe(true);
+      expect(textContains(root, '12.7 km')).toBe(true);
+      expect(textContains(root, '18 min')).toBe(true);
+      expect(textContains(root, 'WEATHER TIMELINE')).toBe(false);
+    });
+
+    it('shows a loading state and triggers planTimeline then analyzeWeather', async () => {
+      const planTimeline = jest.fn().mockResolvedValue(undefined);
+      const analyzeWeather = jest.fn().mockResolvedValue(undefined);
+      mockedUseJourney.mockReturnValue(
+        journeyState({ start: START, destination: DESTINATION, route: ROUTE, planTimeline, analyzeWeather }),
+      );
+      const root = await renderJsonAndFlush();
+      const button = findByText(root, 'Analyze Weather');
+      await act(async () => {
+        button.props.onPress();
+      });
+      expect(planTimeline).toHaveBeenCalled();
+    });
+
+    it('shows the Journey Insight CTA once weather analysis is available', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'See Journey Insight')).toBe(true);
+    });
+
+    it('does not personalize checkpoint weather by persona', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState({ persona: 'commuter' }));
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, '31°')).toBe(true);
+      expect(textContains(root, 'Clear')).toBe(true);
+    });
+  });
+
+  describe('Journey Intelligence experience', () => {
+    function weatherReadyState(overrides: Partial<ReturnType<typeof useJourney>> = {}) {
+      return journeyState({
+        start: START,
+        destination: DESTINATION,
+        route: ROUTE,
+        journeyPlan: JOURNEY_PLAN as never,
+        journeyWeather: DETERIORATING_WEATHER_PLAN as never,
+        ...overrides,
+      });
+    }
+
+    it('shows the See Journey Insight CTA before it has been requested', async () => {
+      mockedUseJourney.mockReturnValue(weatherReadyState());
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'See Journey Insight')).toBe(true);
+    });
+
+    it('triggers analyzeJourney when the CTA is pressed', async () => {
+      const analyzeJourney = jest.fn().mockResolvedValue(undefined);
+      mockedUseJourney.mockReturnValue(weatherReadyState({ analyzeJourney }));
+      const root = await renderJsonAndFlush();
+      const button = findByText(root, 'See Journey Insight');
+      await act(async () => {
+        button.props.onPress();
+      });
+      expect(analyzeJourney).toHaveBeenCalled();
+    });
+
+    it('shows a loading state while intelligence is being generated', async () => {
+      const analyzeJourney = jest.fn(() => new Promise<void>(() => {}));
+      mockedUseJourney.mockReturnValue(weatherReadyState({ analyzeJourney, loading: true }));
+      const root = await renderJsonAndFlush();
+      const button = findByText(root, 'See Journey Insight');
+      await act(async () => {
+        button.props.onPress();
+      });
+      expect(textContains(root, 'Understanding your journey')).toBe(true);
+    });
+
+    it('renders the primary insight, risk, recommendation, reasons, segment, and confidence', async () => {
+      const analyzeJourney = jest.fn().mockResolvedValue(undefined);
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({ analyzeJourney, journeyIntelligence: RAIN_INTELLIGENCE as never }),
+      );
+      const root = await renderJsonAndFlush();
+
+      expect(textContains(root, 'Rain expected during part of your run')).toBe(true);
+      expect(textContains(root, 'MODERATE IMPACT')).toBe(true);
+      expect(textContains(root, 'Rain probability is elevated during part of your journey.')).toBe(
+        true,
+      );
+      expect(textContains(root, 'Carry rain protection or plan an alternate window.')).toBe(true);
+      expect(textContains(root, "WHY WE'RE SAYING THIS")).toBe(true);
+      expect(textContains(root, 'Multiple checkpoints are affected.')).toBe(true);
+      expect(textContains(root, 'AFFECTED PART OF YOUR JOURNEY')).toBe(true);
+      expect(textContains(root, '3.6 km')).toBe(true);
+      expect(textContains(root, '9.4 km')).toBe(true);
+      expect(textContains(root, 'Weather confidence · High')).toBe(true);
+    });
+
+    it('renders a favorable journey positively', async () => {
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({ journeyIntelligence: FAVORABLE_INTELLIGENCE as never }),
+      );
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, '✓')).toBe(true);
+      expect(textContains(root, 'Great conditions for your run')).toBe(true);
+      expect(textContains(root, 'LOW IMPACT')).toBe(true);
+    });
+
+    it('shows reduced confidence and coverage for partial weather data', async () => {
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({
+          journeyWeather: PARTIAL_WEATHER_PLAN as never,
+          journeyIntelligence: PARTIAL_INTELLIGENCE as never,
+        }),
+      );
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'Weather confidence · Medium')).toBe(true);
+      expect(textContains(root, 'Based on 2 of 3 checkpoints')).toBe(true);
+    });
+
+    it('never shows favorable/low-risk copy when weather is entirely unavailable', () => {
+      let componentRoot: ReturnType<typeof create>;
+      act(() => {
+        componentRoot = create(
+          createElement(JourneyIntelligenceSection, {
+            journeyWeather: ALL_UNAVAILABLE_WEATHER_PLAN as never,
+            journeyIntelligence: UNAVAILABLE_INTELLIGENCE as never,
+            persona: 'runner',
+            requested: true,
+            loading: false,
+            error: null,
+            onAnalyze: jest.fn(),
+          }),
+        );
+      });
+      expect(textContains(componentRoot!, 'JOURNEY INSIGHT UNAVAILABLE')).toBe(true);
+      expect(textContains(componentRoot!, "We don't have enough weather data")).toBe(true);
+      expect(textContains(componentRoot!, 'LOW IMPACT')).toBe(false);
+      expect(textContains(componentRoot!, 'Not enough data')).toBe(false);
+      act(() => {
+        componentRoot.unmount();
+      });
+    });
+
+    it('shows an error state with retry when intelligence generation fails', async () => {
+      const analyzeJourney = jest.fn().mockResolvedValue(undefined);
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({
+          analyzeJourney,
+          error: { code: 'JOURNEY_INVALID_ROUTE', message: 'x' } as never,
+        }),
+      );
+      const root = await renderJsonAndFlush();
+      const cta = findByText(root, 'See Journey Insight');
+      await act(async () => {
+        cta.props.onPress();
+      });
+      expect(textContains(root, 'JOURNEY INSIGHT UNAVAILABLE')).toBe(true);
+      expect(textContains(root, "We couldn't generate an insight")).toBe(true);
+      expect(() => findByText(root, 'Try Again')).not.toThrow();
+    });
+
+    it('shows an empty state when there is no journey weather plan', () => {
+      let componentRoot: ReturnType<typeof create>;
+      act(() => {
+        componentRoot = create(
+          createElement(JourneyIntelligenceSection, {
+            journeyWeather: null,
+            journeyIntelligence: null,
+            persona: 'runner',
+            requested: false,
+            loading: false,
+            error: null,
+            onAnalyze: jest.fn(),
+          }),
+        );
+      });
+      expect(textContains(componentRoot!, 'PLAN A JOURNEY FIRST')).toBe(true);
+      act(() => {
+        componentRoot.unmount();
+      });
+    });
+
+    it('displays the persona context', async () => {
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({ persona: 'runner', journeyIntelligence: RAIN_INTELLIGENCE as never }),
+      );
+      const root = await renderJsonAndFlush();
+      expect(textContains(root, 'For your runner plans')).toBe(true);
+    });
+
+    it('renders different recommendation copy for different personas from the same weather', async () => {
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({ persona: 'runner', journeyIntelligence: RAIN_INTELLIGENCE as never }),
+      );
+      const runnerRoot = await renderJsonAndFlush();
+      expect(textContains(runnerRoot, 'Rain expected during part of your run')).toBe(true);
+
+      act(() => {
+        currentRoot?.unmount();
+      });
+      currentRoot = null;
+
+      mockedUseJourney.mockReturnValue(
+        weatherReadyState({
+          persona: 'commuter',
+          journeyIntelligence: COMMUTER_RAIN_INTELLIGENCE as never,
+        }),
+      );
+      const commuterRoot = await renderJsonAndFlush();
+      expect(textContains(commuterRoot, 'Rain may affect part of your commute')).toBe(true);
+    });
   });
 });

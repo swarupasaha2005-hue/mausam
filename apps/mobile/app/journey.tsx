@@ -8,7 +8,12 @@ import { geocodingService } from '../src/services/location';
 import {
   DestinationSearch,
   JourneyHeader,
+  JourneyIntelligenceSection,
   JourneyMap,
+  JourneyWeatherHero,
+  JourneyWeatherSummary,
+  JourneyWeatherTimeline,
+  JourneyWeatherUnavailable,
   LocationField,
   RouteSummary,
   type DestinationCandidate,
@@ -25,6 +30,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   ROUTE_NOT_FOUND: "We couldn't plan this route right now.",
   ROUTE_PROVIDER_ERROR: "We couldn't plan this route right now.",
   ROUTE_INVALID_COORDINATES: "We couldn't plan this route right now.",
+  JOURNEY_INVALID_ROUTE: "We couldn't analyze weather along your route right now.",
+  JOURNEY_INVALID_DEPARTURE_TIME: "We couldn't analyze weather along your route right now.",
+  JOURNEY_INVALID_OPTIONS: "We couldn't analyze weather along your route right now.",
 };
 
 function friendlyError(code?: string): string {
@@ -32,29 +40,35 @@ function friendlyError(code?: string): string {
 }
 
 /**
- * Production Journey Planning screen. Composes existing hooks/services
- * only — useJourney() for location/route state, geocodingService (via
- * DestinationSearch) for destination search, MapView (via JourneyMap)
- * for the route visualization. No routing/geocoding/weather logic lives
- * here.
+ * Production Journey screen: planning → route → journey weather. Composes
+ * existing hooks/services only — useJourney() for location/route/weather
+ * state, geocodingService (via DestinationSearch) for destination search,
+ * MapView (via JourneyMap) for the route visualization. No routing/
+ * geocoding/weather/transition logic lives here.
  */
 export default function JourneyScreen() {
   const router = useRouter();
   const {
     start,
     route,
-    journeyPlan,
+    journeyWeather,
     loading,
     error,
     loadStart,
     selectDestination,
     getRoute,
     planTimeline,
+    journeyPlan,
+    journeyIntelligence,
+    persona,
+    analyzeWeather,
+    analyzeJourney,
   } = useJourney();
 
   const [selectedDestination, setSelectedDestination] = useState<DestinationCandidate | null>(null);
   const [startPlace, setStartPlace] = useState<Partial<Location> | null>(null);
-  const [weatherStage, setWeatherStage] = useState<'idle' | 'loading' | 'ready'>('idle');
+  const [analyzingWeather, setAnalyzingWeather] = useState(false);
+  const [insightRequested, setInsightRequested] = useState(false);
 
   useEffect(() => {
     loadStart();
@@ -80,19 +94,40 @@ export default function JourneyScreen() {
     };
   }, [start?.latitude, start?.longitude]);
 
+  // Chains planTimeline() -> analyzeWeather() across the two state
+  // updates involved, rather than calling analyzeWeather() with a
+  // stale (pre-planTimeline) journeyPlan closure.
+  useEffect(() => {
+    if (!analyzingWeather) return;
+    if (error) {
+      setAnalyzingWeather(false);
+      return;
+    }
+    if (journeyPlan && !journeyWeather) {
+      analyzeWeather().finally(() => setAnalyzingWeather(false));
+    }
+  }, [analyzingWeather, journeyPlan, journeyWeather, error, analyzeWeather]);
+
   function handleSelectDestination(candidate: DestinationCandidate) {
     setSelectedDestination(candidate);
     selectDestination(candidate.point);
   }
 
-  async function handleAnalyzeWeather() {
-    setWeatherStage('loading');
-    await planTimeline();
-    setWeatherStage('ready');
+  function handleAnalyzeWeather() {
+    setAnalyzingWeather(true);
+    planTimeline();
+  }
+
+  async function handleSeeInsight() {
+    setInsightRequested(true);
+    await analyzeJourney();
   }
 
   const startLabel = startPlace?.city ?? startPlace?.name ?? null;
+  const destinationLabel = selectedDestination?.label ?? 'Destination';
   const routeReady = !!route;
+  const allWeatherUnavailable =
+    !!journeyWeather && journeyWeather.summary.weatherAvailableCheckpoints === 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -149,7 +184,7 @@ export default function JourneyScreen() {
           {routeReady && route && (
             <View style={styles.section}>
               <Text style={styles.routeTitle}>
-                {startLabel ?? 'Your location'} → {selectedDestination?.label ?? 'Destination'}
+                {startLabel ?? 'Your location'} → {destinationLabel}
               </Text>
 
               <JourneyMap
@@ -162,22 +197,61 @@ export default function JourneyScreen() {
                 <RouteSummary distanceKm={route.distanceKm} durationMinutes={route.durationMinutes} />
               </Card>
 
-              {error && <Text style={styles.errorText}>{friendlyError(error.code)}</Text>}
+              {!journeyWeather && error && (
+                <Text style={styles.errorText}>{friendlyError(error.code)}</Text>
+              )}
 
-              <View style={styles.ctaRow}>
-                <Button
-                  title={weatherStage === 'loading' ? 'Preparing your journey…' : 'Analyze Weather →'}
-                  variant="secondary"
-                  onPress={handleAnalyzeWeather}
-                  disabled={weatherStage === 'loading'}
-                />
-              </View>
+              {!journeyWeather && (
+                <View style={styles.ctaRow}>
+                  <Button
+                    title={analyzingWeather ? 'Analyzing your route…' : 'Analyze Weather →'}
+                    variant="secondary"
+                    onPress={handleAnalyzeWeather}
+                    disabled={analyzingWeather}
+                  />
+                  {analyzingWeather && (
+                    <Text style={styles.loadingNote}>Checking weather along the journey</Text>
+                  )}
+                </View>
+              )}
 
-              {weatherStage === 'ready' && journeyPlan && (
-                <Text style={styles.note}>
-                  Journey timeline ready ({journeyPlan.checkpoints.length} checkpoints) — weather
-                  analysis is coming soon.
-                </Text>
+              {journeyWeather && allWeatherUnavailable && (
+                <View style={styles.weatherSection}>
+                  <JourneyWeatherUnavailable onRetry={handleAnalyzeWeather} />
+                </View>
+              )}
+
+              {journeyWeather && !allWeatherUnavailable && (
+                <View style={styles.weatherSection}>
+                  <JourneyWeatherHero
+                    checkpoints={journeyWeather.checkpoints}
+                    summary={journeyWeather.summary}
+                  />
+
+                  <JourneyWeatherTimeline
+                    checkpoints={journeyWeather.checkpoints}
+                    summary={journeyWeather.summary}
+                    startLabel={startLabel ?? 'Your location'}
+                    destinationLabel={destinationLabel}
+                  />
+
+                  <JourneyWeatherSummary
+                    summary={journeyWeather.summary}
+                    checkpoints={journeyWeather.checkpoints}
+                  />
+
+                  <View style={styles.intelligenceSection}>
+                    <JourneyIntelligenceSection
+                      journeyWeather={journeyWeather}
+                      journeyIntelligence={journeyIntelligence}
+                      persona={persona}
+                      requested={insightRequested}
+                      loading={loading}
+                      error={insightRequested ? error : null}
+                      onAnalyze={handleSeeInsight}
+                    />
+                  </View>
+                </View>
               )}
             </View>
           )}
@@ -238,9 +312,16 @@ const styles = StyleSheet.create({
   summaryCard: {
     paddingVertical: spacing.lg,
   },
-  note: {
+  loadingNote: {
     ...typography.meta,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  weatherSection: {
+    marginTop: spacing.lg,
+    gap: spacing.lg,
+  },
+  intelligenceSection: {
+    marginTop: spacing.md,
   },
 });
