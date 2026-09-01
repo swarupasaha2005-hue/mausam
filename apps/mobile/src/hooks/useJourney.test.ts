@@ -103,6 +103,34 @@ describe('useJourney', () => {
     expect(result.current.error).toMatchObject({ code: 'GEOCODING_FAILED' });
   });
 
+  it('selectDestination sets an explicitly chosen destination and resets downstream state', async () => {
+    mockedRoutingService.getRoute.mockResolvedValue(ROUTE);
+    const { result } = renderHook(() => useJourney());
+
+    await act(async () => {
+      result.current.selectDestination(DESTINATION);
+    });
+    expect(result.current.destination).toEqual(DESTINATION);
+    expect(result.current.route).toBeNull();
+
+    await act(async () => {
+      await result.current.loadStart();
+    });
+    mockedLocationService.getCurrentLocation.mockResolvedValue(START);
+    await act(async () => {
+      await result.current.loadStart();
+    });
+    await act(async () => {
+      await result.current.getRoute();
+    });
+    expect(result.current.route).toEqual(ROUTE);
+
+    await act(async () => {
+      result.current.selectDestination({ latitude: 1, longitude: 1 });
+    });
+    expect(result.current.route).toBeNull();
+  });
+
   it('getRoute requires both start and destination', async () => {
     const { result } = renderHook(() => useJourney());
 

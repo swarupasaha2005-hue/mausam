@@ -35,6 +35,7 @@ interface UseJourneyState {
 interface UseJourneyResult extends UseJourneyState {
   loadStart: () => Promise<void>;
   searchDestination: (query: string) => Promise<void>;
+  selectDestination: (point: GeoPoint) => void;
   getRoute: () => Promise<void>;
   planTimeline: () => Promise<void>;
   analyzeWeather: () => Promise<void>;
@@ -99,6 +100,21 @@ export function useJourney(): UseJourneyResult {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  /**
+   * Sets an explicitly user-selected destination point (e.g. from a
+   * multi-result search UI), as opposed to searchDestination's
+   * auto-selected first match. Additive to the existing flow — resets
+   * downstream state the same way searchDestination does.
+   */
+  const selectDestination = useCallback((point: GeoPoint) => {
+    setDestination(point);
+    setRoute(null);
+    setJourneyPlan(null);
+    setJourneyWeather(null);
+    setJourneyIntelligence(null);
+    setError(null);
   }, []);
 
   const getRoute = useCallback(async () => {
@@ -252,6 +268,7 @@ export function useJourney(): UseJourneyResult {
     error,
     loadStart,
     searchDestination,
+    selectDestination,
     getRoute,
     planTimeline,
     analyzeWeather,
