@@ -1,15 +1,13 @@
 import { RouteError, type GeoPoint, type Route, type RouteErrorCode } from '@cloud6/shared';
+import { apiRequest, ApiHttpError, ApiInvalidResponseError, ApiRequestFailedError } from '../apiClient';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
-
-function buildQuery(start: GeoPoint, destination: GeoPoint): string {
-  const params = new URLSearchParams({
+function buildQuery(start: GeoPoint, destination: GeoPoint): Record<string, string> {
+  return {
     startLatitude: String(start.latitude),
     startLongitude: String(start.longitude),
     destinationLatitude: String(destination.latitude),
     destinationLongitude: String(destination.longitude),
-  });
-  return params.toString();
+  };
 }
 
 /**
@@ -19,33 +17,22 @@ function buildQuery(start: GeoPoint, destination: GeoPoint): string {
  */
 export const routingService = {
   async getRoute(start: GeoPoint, destination: GeoPoint): Promise<Route> {
-    let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/api/routes?${buildQuery(start, destination)}`);
+      return await apiRequest<Route>('/api/routes', { query: buildQuery(start, destination) });
     } catch (cause) {
-      throw new RouteError(
-        'ROUTE_REQUEST_FAILED',
-        cause instanceof Error ? cause.message : 'Network request to CLOUD6 backend failed',
-      );
-    }
-
-    if (!response.ok) {
-      let code: RouteErrorCode = 'ROUTE_PROVIDER_ERROR';
-      try {
-        const body = (await response.json()) as { error?: { code?: RouteErrorCode } };
-        if (body?.error?.code) {
-          code = body.error.code;
-        }
-      } catch {
-        // response body wasn't JSON — fall back to the generic code above.
+      if (cause instanceof ApiHttpError) {
+        throw new RouteError(
+          (cause.errorCode as RouteErrorCode) ?? 'ROUTE_PROVIDER_ERROR',
+          cause.message,
+        );
       }
-      throw new RouteError(code, `CLOUD6 backend responded with HTTP ${response.status}`);
-    }
-
-    try {
-      return (await response.json()) as Route;
-    } catch {
-      throw new RouteError('ROUTE_INVALID_RESPONSE', 'CLOUD6 backend response was not valid JSON');
+      if (cause instanceof ApiInvalidResponseError) {
+        throw new RouteError('ROUTE_INVALID_RESPONSE', cause.message);
+      }
+      if (cause instanceof ApiRequestFailedError) {
+        throw new RouteError('ROUTE_REQUEST_FAILED', cause.message);
+      }
+      throw new RouteError('ROUTE_REQUEST_FAILED');
     }
   },
 };

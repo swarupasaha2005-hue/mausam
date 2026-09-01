@@ -4,8 +4,7 @@ import {
   type UserContext,
   type UserContextInput,
 } from '@cloud6/shared';
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
+import { apiRequest, ApiHttpError, ApiInvalidResponseError, ApiRequestFailedError } from '../apiClient';
 
 /**
  * Mobile-side personalization client. Calls the CLOUD6 backend
@@ -14,40 +13,25 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3
  */
 export const personalizationService = {
   async createUserContext(input: UserContextInput): Promise<UserContext> {
-    let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/api/personalization/context`, {
+      return await apiRequest<UserContext>('/api/personalization/context', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: input,
       });
     } catch (cause) {
-      throw new PersonalizationError(
-        'PERSONA_INVALID',
-        cause instanceof Error ? cause.message : 'Network request to CLOUD6 backend failed',
-      );
-    }
-
-    if (!response.ok) {
-      let code: PersonalizationErrorCode = 'PERSONA_INVALID';
-      try {
-        const body = (await response.json()) as { error?: { code?: PersonalizationErrorCode } };
-        if (body?.error?.code) {
-          code = body.error.code;
-        }
-      } catch {
-        // response body wasn't JSON — fall back to the generic code above.
+      if (cause instanceof ApiHttpError) {
+        throw new PersonalizationError(
+          (cause.errorCode as PersonalizationErrorCode) ?? 'PERSONA_INVALID',
+          cause.message,
+        );
       }
-      throw new PersonalizationError(code, `CLOUD6 backend responded with HTTP ${response.status}`);
-    }
-
-    try {
-      return (await response.json()) as UserContext;
-    } catch {
-      throw new PersonalizationError(
-        'PERSONA_INVALID',
-        'CLOUD6 backend response was not valid JSON',
-      );
+      if (cause instanceof ApiInvalidResponseError) {
+        throw new PersonalizationError('PERSONA_INVALID', cause.message);
+      }
+      if (cause instanceof ApiRequestFailedError) {
+        throw new PersonalizationError('PERSONA_INVALID', cause.message);
+      }
+      throw new PersonalizationError('PERSONA_INVALID');
     }
   },
 };

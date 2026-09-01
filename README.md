@@ -65,7 +65,8 @@ Requires Node.js 18+.
 
 ```bash
 npm install
-cp .env.example .env   # fill in local values; no real keys yet needed for Phase 1
+cp apps/server/.env.example apps/server/.env   # no real keys needed for Phase 1
+cp apps/mobile/.env.example apps/mobile/.env
 ```
 
 ## Development commands

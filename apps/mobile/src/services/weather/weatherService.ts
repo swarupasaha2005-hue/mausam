@@ -6,8 +6,7 @@ import {
   type WeatherErrorCode,
   type WeatherSnapshot,
 } from '@cloud6/shared';
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
+import { apiRequest, ApiHttpError, ApiInvalidResponseError, ApiRequestFailedError } from '../apiClient';
 
 interface HourlyForecastResponse {
   location: GeoPoint;
@@ -19,47 +18,32 @@ interface DailyForecastResponse {
   daily: DailyWeather[];
 }
 
-async function requestJson<T>(path: string): Promise<T> {
-  let response: Response;
+async function requestJson<T>(path: string, query: Record<string, string>): Promise<T> {
   try {
-    response = await fetch(`${API_BASE_URL}${path}`);
+    return await apiRequest<T>(path, { query });
   } catch (cause) {
-    throw new WeatherError(
-      'WEATHER_REQUEST_FAILED',
-      cause instanceof Error ? cause.message : 'Network request to CLOUD6 backend failed',
-    );
-  }
-
-  if (!response.ok) {
-    let code: WeatherErrorCode = 'WEATHER_PROVIDER_ERROR';
-    try {
-      const body = (await response.json()) as { error?: { code?: WeatherErrorCode } };
-      if (body?.error?.code) {
-        code = body.error.code;
-      }
-    } catch {
-      // response body wasn't JSON — fall back to the generic code above.
+    if (cause instanceof ApiHttpError) {
+      throw new WeatherError(
+        (cause.errorCode as WeatherErrorCode) ?? 'WEATHER_PROVIDER_ERROR',
+        cause.message,
+      );
     }
-    throw new WeatherError(code, `CLOUD6 backend responded with HTTP ${response.status}`);
-  }
-
-  try {
-    return (await response.json()) as T;
-  } catch {
-    throw new WeatherError(
-      'WEATHER_INVALID_RESPONSE',
-      'CLOUD6 backend response was not valid JSON',
-    );
+    if (cause instanceof ApiInvalidResponseError) {
+      throw new WeatherError('WEATHER_INVALID_RESPONSE', cause.message);
+    }
+    if (cause instanceof ApiRequestFailedError) {
+      throw new WeatherError('WEATHER_REQUEST_FAILED', cause.message);
+    }
+    throw new WeatherError('WEATHER_REQUEST_FAILED');
   }
 }
 
-function buildQuery(point: GeoPoint, extra?: Record<string, string>): string {
-  const params = new URLSearchParams({
+function buildQuery(point: GeoPoint, extra?: Record<string, string>): Record<string, string> {
+  return {
     latitude: String(point.latitude),
     longitude: String(point.longitude),
     ...extra,
-  });
-  return params.toString();
+  };
 }
 
 /**
@@ -69,16 +53,16 @@ function buildQuery(point: GeoPoint, extra?: Record<string, string>): string {
  */
 export const weatherService = {
   async getCurrentWeather(point: GeoPoint): Promise<WeatherSnapshot> {
-    return requestJson<WeatherSnapshot>(`/api/weather/current?${buildQuery(point)}`);
+    return requestJson<WeatherSnapshot>('/api/weather/current', buildQuery(point));
   },
 
   async getHourlyForecast(point: GeoPoint, hours?: number): Promise<HourlyForecastResponse> {
     const extra = hours ? { hours: String(hours) } : undefined;
-    return requestJson<HourlyForecastResponse>(`/api/weather/hourly?${buildQuery(point, extra)}`);
+    return requestJson<HourlyForecastResponse>('/api/weather/hourly', buildQuery(point, extra));
   },
 
   async getDailyForecast(point: GeoPoint, days?: number): Promise<DailyForecastResponse> {
     const extra = days ? { days: String(days) } : undefined;
-    return requestJson<DailyForecastResponse>(`/api/weather/daily?${buildQuery(point, extra)}`);
+    return requestJson<DailyForecastResponse>('/api/weather/daily', buildQuery(point, extra));
   },
 };
