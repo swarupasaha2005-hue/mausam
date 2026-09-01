@@ -5,6 +5,7 @@ import {
   RouteError,
   type GeoPoint,
   type JourneyPlan,
+  type JourneyWeatherPlan,
   type Route,
 } from '@cloud6/shared';
 import { geocodingService, locationService } from '../services/location';
@@ -18,6 +19,7 @@ interface UseJourneyState {
   destination: GeoPoint | null;
   route: Route | null;
   journeyPlan: JourneyPlan | null;
+  journeyWeather: JourneyWeatherPlan | null;
   loading: boolean;
   error: JourneyHookError | null;
 }
@@ -27,21 +29,23 @@ interface UseJourneyResult extends UseJourneyState {
   searchDestination: (query: string) => Promise<void>;
   getRoute: () => Promise<void>;
   planTimeline: () => Promise<void>;
+  analyzeWeather: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
 /**
  * Thin orchestration hook: uses LocationService for the start point,
  * GeocodingService for destination text search, routingService for the
- * route, and journeyService for the sampled checkpoint timeline. No
- * routing-provider or sampling/timeline math lives here — that stays on
- * the backend.
+ * route, and journeyService for the sampled checkpoint timeline and
+ * weather enrichment. No routing-provider, sampling/timeline, or weather
+ * logic lives here — that all stays on the backend.
  */
 export function useJourney(): UseJourneyResult {
   const [start, setStart] = useState<GeoPoint | null>(null);
   const [destination, setDestination] = useState<GeoPoint | null>(null);
   const [route, setRoute] = useState<Route | null>(null);
   const [journeyPlan, setJourneyPlan] = useState<JourneyPlan | null>(null);
+  const [journeyWeather, setJourneyWeather] = useState<JourneyWeatherPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<JourneyHookError | null>(null);
 
@@ -63,6 +67,7 @@ export function useJourney(): UseJourneyResult {
     setError(null);
     setRoute(null);
     setJourneyPlan(null);
+    setJourneyWeather(null);
     try {
       const [point] = await geocodingService.geocode(query);
       if (!point) {
@@ -86,6 +91,7 @@ export function useJourney(): UseJourneyResult {
     setLoading(true);
     setError(null);
     setJourneyPlan(null);
+    setJourneyWeather(null);
     try {
       const result = await routingService.getRoute(start, destination);
       setRoute(result);
@@ -106,6 +112,7 @@ export function useJourney(): UseJourneyResult {
 
     setLoading(true);
     setError(null);
+    setJourneyWeather(null);
     try {
       const plan = await journeyService.planJourney(route);
       setJourneyPlan(plan);
@@ -116,6 +123,29 @@ export function useJourney(): UseJourneyResult {
     }
   }, [route]);
 
+  const analyzeWeather = useCallback(async () => {
+    if (!journeyPlan) {
+      setError(
+        new JourneyError(
+          'JOURNEY_INVALID_ROUTE',
+          'A journey timeline is required before analyzing weather',
+        ),
+      );
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const weatherPlan = await journeyService.getJourneyWeather(journeyPlan);
+      setJourneyWeather(weatherPlan);
+    } catch (cause) {
+      setError(cause instanceof JourneyError ? cause : new JourneyError('JOURNEY_INVALID_ROUTE'));
+    } finally {
+      setLoading(false);
+    }
+  }, [journeyPlan]);
+
   const refresh = useCallback(async () => {
     if (!destination) {
       await loadStart();
@@ -125,6 +155,7 @@ export function useJourney(): UseJourneyResult {
     setLoading(true);
     setError(null);
     setJourneyPlan(null);
+    setJourneyWeather(null);
     try {
       const point = await locationService.getCurrentLocation();
       setStart(point);
@@ -146,12 +177,14 @@ export function useJourney(): UseJourneyResult {
     destination,
     route,
     journeyPlan,
+    journeyWeather,
     loading,
     error,
     loadStart,
     searchDestination,
     getRoute,
     planTimeline,
+    analyzeWeather,
     refresh,
   };
 }

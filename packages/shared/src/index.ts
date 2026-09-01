@@ -43,3 +43,9 @@ export type { RouteErrorCode } from './route-error';
 export type { JourneyCheckpoint, JourneyPlan, SampleRouteOptions } from './journey';
 export { JourneyError } from './journey-error';
 export type { JourneyErrorCode } from './journey-error';
+export type {
+  JourneyWeatherCheckpoint,
+  JourneyWeatherTransition,
+  JourneyWeatherSummary,
+  JourneyWeatherPlan,
+} from './journey-weather';

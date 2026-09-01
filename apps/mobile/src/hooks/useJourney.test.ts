@@ -10,7 +10,9 @@ jest.mock('../services/location', () => ({
   geocodingService: { geocode: jest.fn() },
 }));
 jest.mock('../services/routing', () => ({ routingService: { getRoute: jest.fn() } }));
-jest.mock('../services/journey', () => ({ journeyService: { planJourney: jest.fn() } }));
+jest.mock('../services/journey', () => ({
+  journeyService: { planJourney: jest.fn(), getJourneyWeather: jest.fn() },
+}));
 
 const mockedLocationService = jest.mocked(locationService);
 const mockedGeocodingService = jest.mocked(geocodingService);
@@ -201,5 +203,61 @@ describe('useJourney', () => {
 
     expect(mockedJourneyService.planJourney).toHaveBeenCalledWith(ROUTE);
     expect(result.current.journeyPlan).toEqual(plan);
+  });
+
+  it('analyzeWeather requires a journey plan first', async () => {
+    const { result } = renderHook(() => useJourney());
+
+    await act(async () => {
+      await result.current.analyzeWeather();
+    });
+
+    expect(mockedJourneyService.getJourneyWeather).not.toHaveBeenCalled();
+    expect(result.current.error).toBeInstanceOf(JourneyError);
+  });
+
+  it('analyzeWeather runs the full JourneyPlan -> JourneyWeatherPlan integration flow', async () => {
+    mockedLocationService.getCurrentLocation.mockResolvedValue(START);
+    mockedGeocodingService.geocode.mockResolvedValue([DESTINATION]);
+    mockedRoutingService.getRoute.mockResolvedValue(ROUTE);
+    const plan = {
+      route: ROUTE,
+      departureTime: '2026-09-01T16:00:00.000Z',
+      estimatedArrivalTime: '2026-09-01T16:47:00.000Z',
+      durationMinutes: 47,
+      checkpoints: [],
+    };
+    const weatherPlan = {
+      ...plan,
+      summary: {
+        weatherAvailableCheckpoints: 0,
+        weatherUnavailableCheckpoints: 0,
+        rainAffectedCheckpointCount: 0,
+        firstRainCheckpointSequence: null,
+        transitions: [],
+      },
+    };
+    mockedJourneyService.planJourney.mockResolvedValue(plan);
+    mockedJourneyService.getJourneyWeather.mockResolvedValue(weatherPlan);
+
+    const { result } = renderHook(() => useJourney());
+    await act(async () => {
+      await result.current.loadStart();
+    });
+    await act(async () => {
+      await result.current.searchDestination('Salt Lake, Kolkata');
+    });
+    await act(async () => {
+      await result.current.getRoute();
+    });
+    await act(async () => {
+      await result.current.planTimeline();
+    });
+    await act(async () => {
+      await result.current.analyzeWeather();
+    });
+
+    expect(mockedJourneyService.getJourneyWeather).toHaveBeenCalledWith(plan);
+    expect(result.current.journeyWeather).toEqual(weatherPlan);
   });
 });

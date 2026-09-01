@@ -8,7 +8,15 @@ to a small set of distance-spaced `JourneyCheckpoint`s (via
 each. `journey.service.ts` (`POST /api/journey/plan`) validates input and
 composes the two.
 
-Does NOT fetch weather, call Open-Meteo, or implement Journey Weather
-Intelligence — that's a future phase that will call
-`WeatherService.getWeatherAt(checkpoint.point, checkpoint.estimatedArrivalTime)`
-per checkpoint using this module's output.
+Phase 9 status: Journey Weather Intelligence implemented.
+`journey.weather.service.ts` (`POST /api/journey/weather`) enriches an
+existing `JourneyPlan`'s checkpoints with weather via the existing
+`WeatherService.getWeatherAt(point, estimatedArrivalTime)` — it does not
+call Open-Meteo directly, does not resample the route, and does not
+recalculate the timeline (Phase 8 already did that). A per-checkpoint
+weather failure is preserved as `weather: null` +
+`weatherError`, never silently dropped.
+`journey.weather.summary.ts` derives a simple
+`weatherAvailableCheckpoints`/`rainAffectedCheckpointCount`/`transitions`
+overview — no risk scoring, no recommendations. Persona/UserContext is
+intentionally not involved here (a future phase).

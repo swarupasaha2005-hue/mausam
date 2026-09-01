@@ -1,9 +1,9 @@
 # CLOUD6 API Contracts
 
-Status: **Phase 8 — Route Sampling + Journey Timeline**. Only the
-endpoints below exist. Future endpoints (alerts, users) will be
-documented here as each module is implemented — they are intentionally
-not speculated on yet.
+Status: **Phase 9 — Journey Weather Intelligence**. Only the endpoints
+below exist. Future endpoints (alerts, users) will be documented here as
+each module is implemented — they are intentionally not speculated on
+yet.
 
 ## `GET /health`
 
@@ -414,3 +414,96 @@ live navigation, and not adjusted for traffic.
 
 `code` is one of `JOURNEY_INVALID_ROUTE`, `JOURNEY_INVALID_DEPARTURE_TIME`,
 `JOURNEY_INVALID_OPTIONS`.
+
+### `POST /api/journey/weather`
+
+Enriches an existing `JourneyPlan`'s checkpoints with weather at each
+checkpoint's location and estimated arrival time. Does not call the
+routing provider, does not resample the route, and does not recalculate
+the timeline — pass in the `JourneyPlan` already produced by
+`POST /api/journey/plan`. See `architecture.md` §21.
+
+**Request body**
+
+```json
+{
+  "journeyPlan": {
+    "route": { "...": "..." },
+    "departureTime": "2026-09-01T16:00:00.000Z",
+    "estimatedArrivalTime": "2026-09-01T16:18:01.200Z",
+    "durationMinutes": 18.02,
+    "checkpoints": [
+      {
+        "sequence": 1,
+        "point": { "latitude": 22.5726, "longitude": 88.3639 },
+        "distanceFromStartKm": 0,
+        "estimatedArrivalTime": "2026-09-01T16:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+**Response — 200 OK**
+
+```json
+{
+  "route": { "...": "..." },
+  "departureTime": "2026-09-01T16:00:00.000Z",
+  "estimatedArrivalTime": "2026-09-01T16:18:01.200Z",
+  "durationMinutes": 18.02,
+  "checkpoints": [
+    {
+      "sequence": 1,
+      "point": { "latitude": 22.5726, "longitude": 88.3639 },
+      "distanceFromStartKm": 0,
+      "estimatedArrivalTime": "2026-09-01T16:00:00.000Z",
+      "weather": {
+        "timestamp": "2026-09-01T16:00:00.000Z",
+        "temperature": 26.6,
+        "precipitation": 0.4,
+        "precipitationProbability": 78,
+        "rainProbability": 78,
+        "humidity": 93,
+        "windSpeed": 12,
+        "uvIndex": 0,
+        "weatherCode": "drizzle"
+      }
+    },
+    {
+      "sequence": 6,
+      "point": { "latitude": 22.5808, "longitude": 88.4197 },
+      "distanceFromStartKm": 9.11,
+      "estimatedArrivalTime": "2026-09-01T16:13:02.000Z",
+      "weather": null,
+      "weatherError": { "code": "WEATHER_TIMEOUT", "message": "Open-Meteo request timed out" }
+    }
+  ],
+  "summary": {
+    "weatherAvailableCheckpoints": 5,
+    "weatherUnavailableCheckpoints": 3,
+    "rainAffectedCheckpointCount": 5,
+    "firstRainCheckpointSequence": 1,
+    "transitions": []
+  }
+}
+```
+
+A checkpoint whose weather lookup failed is never dropped — it keeps its
+`sequence`/`point`/`distanceFromStartKm`/`estimatedArrivalTime`, with
+`weather: null` and a `weatherError` instead. This is real behavior
+observed under live load, not a hypothetical — see `architecture.md`
+§22.
+
+**Response — 400 Bad Request**
+
+```json
+{
+  "error": {
+    "code": "JOURNEY_INVALID_ROUTE",
+    "message": "journeyPlan.checkpoints must be a non-empty array"
+  }
+}
+```
+
+`code` is one of `JOURNEY_INVALID_ROUTE`, `JOURNEY_INVALID_DEPARTURE_TIME`.

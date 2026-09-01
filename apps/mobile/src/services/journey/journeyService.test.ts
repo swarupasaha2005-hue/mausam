@@ -57,3 +57,54 @@ describe('journeyService.planJourney', () => {
     await expect(journeyService.planJourney(ROUTE)).rejects.toBeInstanceOf(JourneyError);
   });
 });
+
+const JOURNEY_PLAN = {
+  route: ROUTE,
+  departureTime: '2026-09-01T16:00:00.000Z',
+  estimatedArrivalTime: '2026-09-01T16:30:00.000Z',
+  durationMinutes: 30,
+  checkpoints: [],
+};
+
+describe('journeyService.getJourneyWeather', () => {
+  it('calls the CLOUD6 backend (/api/journey/weather), not Open-Meteo', async () => {
+    const journeyWeatherPlan = {
+      ...JOURNEY_PLAN,
+      summary: {
+        weatherAvailableCheckpoints: 0,
+        weatherUnavailableCheckpoints: 0,
+        rainAffectedCheckpointCount: 0,
+        firstRainCheckpointSequence: null,
+        transitions: [],
+      },
+    };
+    mockFetch(() => new Response(JSON.stringify(journeyWeatherPlan), { status: 200 }));
+
+    const result = await journeyService.getJourneyWeather(JOURNEY_PLAN);
+
+    expect(result).toEqual(journeyWeatherPlan);
+    const [url, init] = (globalThis.fetch as jest.Mock).mock.calls[0];
+    expect(url).toContain('/api/journey/weather');
+    expect(url).not.toContain('open-meteo.com');
+    expect(JSON.parse(init.body)).toEqual({ journeyPlan: JOURNEY_PLAN });
+  });
+
+  it('normalizes a backend error response into a JourneyError', async () => {
+    mockFetch(
+      () =>
+        new Response(JSON.stringify({ error: { code: 'JOURNEY_INVALID_ROUTE' } }), { status: 400 }),
+    );
+
+    await expect(journeyService.getJourneyWeather(JOURNEY_PLAN)).rejects.toBeInstanceOf(
+      JourneyError,
+    );
+  });
+
+  it('normalizes a network failure', async () => {
+    mockFetch(() => Promise.reject(new Error('Network request failed')));
+
+    await expect(journeyService.getJourneyWeather(JOURNEY_PLAN)).rejects.toBeInstanceOf(
+      JourneyError,
+    );
+  });
+});

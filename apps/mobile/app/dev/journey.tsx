@@ -15,12 +15,14 @@ export default function JourneyTestScreen() {
     destination,
     route,
     journeyPlan,
+    journeyWeather,
     loading,
     error,
     loadStart,
     searchDestination,
     getRoute,
     planTimeline,
+    analyzeWeather,
     refresh,
   } = useJourney();
   const [query, setQuery] = useState('');
@@ -85,6 +87,70 @@ export default function JourneyTestScreen() {
                 <Row label="ETA" value={formatTime(checkpoint.estimatedArrivalTime)} />
               </View>
             ))}
+          </>
+        )}
+      </Section>
+
+      <Section title="JOURNEY WEATHER">
+        <Button
+          title="Analyze Journey Weather"
+          onPress={analyzeWeather}
+          disabled={loading || !journeyPlan}
+        />
+        {journeyWeather && (
+          <>
+            {journeyWeather.checkpoints.map((checkpoint) => (
+              <View key={checkpoint.sequence} style={styles.checkpoint}>
+                <Text style={styles.checkpointTitle}>Checkpoint {checkpoint.sequence}</Text>
+                <Row label="Distance" value={`${checkpoint.distanceFromStartKm.toFixed(1)} km`} />
+                <Row label="ETA" value={formatTime(checkpoint.estimatedArrivalTime)} />
+                {checkpoint.weather ? (
+                  <>
+                    <Row label="Condition" value={checkpoint.weather.weatherCode} />
+                    <Row label="Temperature" value={`${checkpoint.weather.temperature}°C`} />
+                    <Row
+                      label="Rain probability"
+                      value={`${checkpoint.weather.rainProbability}%`}
+                    />
+                  </>
+                ) : (
+                  <Text style={styles.error}>Weather unavailable</Text>
+                )}
+              </View>
+            ))}
+
+            <View style={styles.checkpoint}>
+              <Text style={styles.checkpointTitle}>Journey Weather Summary</Text>
+              <Row
+                label="Available"
+                value={String(journeyWeather.summary.weatherAvailableCheckpoints)}
+              />
+              <Row
+                label="Unavailable"
+                value={String(journeyWeather.summary.weatherUnavailableCheckpoints)}
+              />
+              <Row
+                label="Rain-affected"
+                value={String(journeyWeather.summary.rainAffectedCheckpointCount)}
+              />
+              {journeyWeather.summary.firstRainCheckpointSequence !== null && (
+                <Row
+                  label="First rain at"
+                  value={`Checkpoint ${journeyWeather.summary.firstRainCheckpointSequence}`}
+                />
+              )}
+              {journeyWeather.summary.transitions.length > 0 && (
+                <>
+                  <Text style={styles.sectionTitle}>Weather changes</Text>
+                  {journeyWeather.summary.transitions.map((transition, index) => (
+                    <Text key={index} style={styles.value}>
+                      {transition.fromCondition} → {transition.toCondition} (P
+                      {transition.fromSequence} → P{transition.toSequence})
+                    </Text>
+                  ))}
+                </>
+              )}
+            </View>
           </>
         )}
       </Section>
@@ -201,5 +267,8 @@ const styles = StyleSheet.create({
   checkpointTitle: {
     fontWeight: '700',
     marginBottom: 2,
+  },
+  error: {
+    color: '#c0392b',
   },
 });

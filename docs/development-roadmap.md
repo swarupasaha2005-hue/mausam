@@ -128,7 +128,38 @@ to the next phase.
   bundled successfully. The "Plan Timeline" button and checkpoint list
   were not click-tested in a running simulator/browser in this
   environment.
-- **Phase 9 — Journey Weather Intelligence** — ⏳ NOT IMPLEMENTED
+- **Phase 9 — Journey Weather Intelligence** — ✅ IMPLEMENTED, UNIT-TESTED, LIVE-VERIFIED — ⏳ mobile UI click-testing pending
+  CLOUD6's core differentiator: enriches Phase 8 journey checkpoints with
+  weather via the existing `WeatherService.getWeatherAt(point, ETA)` —
+  no new weather logic, no Open-Meteo calls from the journey module, no
+  route resampling/timeline recalculation. `JourneyWeatherService`
+  (`modules/journey`) queries weather only at sampled checkpoints (8 for
+  a 370-coordinate route, not 370), concurrently via `Promise.all` with
+  per-checkpoint error isolation so one failure never drops a checkpoint
+  or discards the plan. `POST /api/journey/weather`, shared
+  `JourneyWeatherCheckpoint`/`JourneyWeatherPlan`/`JourneyWeatherSummary`/
+  `JourneyWeatherTransition` models (reusing the existing `HourlyWeather`
+  for checkpoint weather — no duplicate weather model), mobile
+  `journeyService.getJourneyWeather()`, `useJourney()` extended with
+  `analyzeWeather()`, `/dev/journey` extended with a Journey Weather
+  section (per-checkpoint condition/temp/rain probability or
+  "unavailable", plus a summary with rain-affected count and detected
+  weatherCode transitions). No recommendations, no risk scores, no AI —
+  see `architecture.md` §21. 40 backend + 9 mobile unit tests pass, all
+  deterministic (§22). **Live-verified with the actual claim of this
+  phase, not just mocks**: a real 370-coordinate OSRM route → 8-checkpoint
+  `JourneyPlan` → `JourneyWeatherPlan` returned real, distinct Open-Meteo
+  data per checkpoint (rain probability dropping 78%→51% as location/ETA
+  changed along the route); under live request load 3 of 8 checkpoints
+  hit `WEATHER_TIMEOUT` while 5 succeeded, and the response correctly
+  preserved all 8 checkpoints with the 3 failed ones marked
+  `weather: null` + `weatherError` rather than being dropped — this
+  exercised the partial-failure design for real. A ~848m short journey
+  was also planned and weather-enriched end-to-end (2 checkpoints, both
+  with real weather). An invalid journey plan correctly returned 400.
+  `npx expo export --platform web` bundled successfully. "Analyze
+  Journey Weather" and the resulting display were not click-tested in a
+  running simulator/browser in this environment.
 - **Phase 10 — Journey Risk Engine** — ⏳ NOT IMPLEMENTED
 - **Phase 11 — Departure Time Optimization** — ⏳ NOT IMPLEMENTED
 - **Phase 12 — AI Explanation Layer** — ⏳ NOT IMPLEMENTED
@@ -136,4 +167,4 @@ to the next phase.
 - **Phase 14 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 15 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
 
-Do not assume any phase beyond Phase 8 is complete.
+Do not assume any phase beyond Phase 9 is complete.

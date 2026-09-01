@@ -1,6 +1,6 @@
 # CLOUD6 Architecture
 
-Status: **Phase 8 — Route Sampling + Journey Timeline**. This document describes the architecture
+Status: **Phase 9 — Journey Weather Intelligence**. This document describes the architecture
 established so far, and the intended shape of the system in later phases.
 It does not describe implemented product functionality — see
 `development-roadmap.md` for what is and isn't built yet.
@@ -1106,3 +1106,176 @@ aren't force-fitted into the 2km default interval. An invalid route
 **Not performed:** interactive click-testing of the "Plan Timeline"
 button and checkpoint list in a running simulator/browser — no
 display/simulator access in this environment.
+
+## 21. Journey Weather Intelligence
+
+```
+JourneyPlan.checkpoints[]  (from Phase 8 — 2–20 points, not 370)
+        │
+        ▼
+  for each checkpoint:
+    WeatherService.getWeatherAt(checkpoint.point, checkpoint.estimatedArrivalTime)
+        │  (existing Phase 3 capability — not reimplemented)
+        ▼
+  JourneyWeatherCheckpoint { sequence, point, distanceFromStartKm,
+                             estimatedArrivalTime, weather, weatherError? }
+        │
+        ▼
+  summarizeJourneyWeather() — availability counts, rain-affected
+                              checkpoints, weatherCode transitions
+        │
+        ▼
+  JourneyWeatherPlan { route, departureTime, estimatedArrivalTime,
+                       durationMinutes, checkpoints, summary }
+```
+
+This is CLOUD6's core differentiator: not "what's the weather here," but
+"what weather will I encounter along this journey." **Journey Weather
+Intelligence enriches route checkpoints with weather based on estimated
+location and arrival time** — nothing more. No AI, no recommendations,
+no risk scores, no departure-time suggestions; those are explicitly
+future phases.
+
+**Weather is queried only at sampled checkpoints, not every route
+coordinate.** A 370-coordinate OSRM route becomes 8 Phase-8 checkpoints,
+which becomes 8 `getWeatherAt()` calls — verified live (§22). This is the
+entire reason Phase 8's sampling exists.
+
+**No new weather logic.** `JourneyWeatherService`
+(`apps/server/src/modules/journey/journey.weather.service.ts`) calls the
+existing `WeatherService.getWeatherAt()` directly — it never imports
+`integrations/weather/openmeteo`, never constructs an Open-Meteo URL, and
+never duplicates weather validation, caching, or normalization. The
+checkpoint's `weather` field is the existing `HourlyWeather` shared type
+(exactly what `getWeatherAt()` already returns), not a new/duplicated
+weather model.
+
+**Timestamp handling.** Each checkpoint's own
+`estimatedArrivalTime` (Phase 8's proportional ETA) is passed to
+`getWeatherAt()` — never the current time. This is the mechanism that
+makes "different location + different arrival time → different weather"
+actually happen (see the live example in §22, where checkpoints along
+the same route at different ETAs returned different rain probabilities).
+
+**Concurrency.** All checkpoints are enriched via a single `Promise.all`
+— bounded by Phase 8's checkpoint cap (≤20), not uncontrolled. Each
+individual `getWeatherAt()` call is wrapped in its own try/catch before
+being included in the `Promise.all`, so one checkpoint's rejection can
+never reject the whole batch or lose the others' results — see partial
+failure below, which this design makes possible.
+
+**Partial failure is a first-class result, not an exception.** If a
+checkpoint's weather lookup fails, `weather` is `null` and `weatherError`
+carries the shared `WeatherErrorCode`/message — the checkpoint is _never_
+dropped from the array, and the rest of the plan (route, other
+checkpoints) is always returned. This was exercised for real, not just
+in mocked tests: see §22's live run, where 3 of 8 checkpoints timed out
+against live Open-Meteo under request pressure while the other 5 (and
+the full route/plan) came back normally. If every checkpoint fails, the
+`JourneyWeatherPlan` is still returned with `checkpoints` all null and
+`summary.weatherAvailableCheckpoints: 0` — never fabricated weather.
+
+**`JourneyWeatherSummary`** is intentionally minimal — available/
+unavailable counts, `rainAffectedCheckpointCount` (weatherCode in
+`['drizzle','rain','thunderstorm']` OR `rainProbability` ≥ 50%, both
+config in `journey.weather.config.ts`), `firstRainCheckpointSequence`,
+and `transitions: JourneyWeatherTransition[]` (a `weatherCode` change
+between consecutive available-weather checkpoints, e.g. `clear → rain`).
+No risk score, no severity ranking beyond what's already visible in the
+raw checkpoint data — this is a UI convenience, not a second decision
+layer.
+
+**Personalization boundary respected.** Nothing in
+`journey.weather.service.ts`/`journey.weather.summary.ts` imports
+`modules/personalization` or touches `UserContext` — a future phase will
+combine `JourneyWeatherPlan` with a persona, not this one.
+
+**API: `POST /api/journey/weather`.** Accepts `{ journeyPlan }` — the
+existing `JourneyPlan` output of `POST /api/journey/plan` (Phase 8),
+reused rather than re-deriving sampling/timeline from a raw route. Does
+not call the routing provider, does not resample, does not recalculate
+the timeline — only enriches the checkpoints already present. See
+`api-contracts.md`.
+
+**Mobile.** `journeyService.getJourneyWeather()` (extended, not a
+duplicate) calls only `/api/journey/weather`. `useJourney()` gained
+`journeyWeather` state and an `analyzeWeather()` action, callable once a
+`journeyPlan` exists. `/dev/journey` gained a "JOURNEY WEATHER" section:
+per-checkpoint condition/temperature/rain probability (or "Weather
+unavailable"), plus a summary block (available/unavailable counts,
+rain-affected count, first rain checkpoint, detected transitions) — all
+values sourced directly from the `JourneyWeatherPlan`, nothing
+hardcoded in the component.
+
+## 22. Journey Weather Intelligence Testing
+
+Backend unit tests — 40 new tests, deterministic, `WeatherService`
+mocked, no network:
+
+- `modules/journey/journey.weather.service.test.ts` (14) — a single
+  checkpoint's weather lookup receives the correct point + ETA; multiple
+  checkpoints each get their own correctly-matched lookup; checkpoint
+  order is preserved even when weather requests resolve out of order
+  (verified by making the _first_ checkpoint's mock respond slowest);
+  full successful enrichment (all checkpoints have weather, original
+  route/timing preserved); partial failure (checkpoint 3 of 4 fails —
+  checkpoints 1/2/4 keep their weather, checkpoint 3 becomes `weather:
+null` + `weatherError`, never dropped, `summary` counts reflect 3
+  available/1 unavailable); complete failure (all 4 fail — plan and all
+  4 checkpoints still returned, zero fake weather, `summary` shows 0
+  available); 5 invalid-input cases (missing plan, empty checkpoints, a
+  malformed checkpoint, invalid `departureTime`); a 2-checkpoint
+  short-journey plan enriches without issue.
+- `modules/journey/journey.weather.summary.test.ts` (11) — CLEAR→RAIN
+  and RAIN→CLEAR transition detection, no transition when weather is
+  constant, transitions correctly skip checkpoints with missing weather
+  instead of crashing; available/unavailable counts; rain-affected
+  detection by both probability and weatherCode; no crash when zero
+  checkpoints have weather.
+- `routes/journeyWeather.test.ts` (4) — supertest against the real
+  Express `app` (`journeyWeatherService` mocked) for
+  `POST /api/journey/weather`: valid request, invalid plan, missing
+  plan, invalid departure time.
+- Fixtures extended in `apps/server/test/fixtures/cloud6/journey.ts`:
+  `journeyPlanFixture` (a 4-checkpoint plan), `makeCheckpoint`,
+  `makeWeatherCheckpoint`, `makeHourlyWeather` builders — reused across
+  all three new test files rather than duplicating literals.
+
+Mobile unit tests — 9 new tests:
+
+- `services/journey/journeyService.test.ts` (+3, appended) —
+  `getJourneyWeather()` calls `/api/journey/weather` (not
+  `open-meteo.com`), normalizes backend error responses and network
+  failures into `JourneyError`.
+- `hooks/useJourney.test.ts` (+2, appended) — `analyzeWeather()`
+  requires a `journeyPlan` first; the full integration flow
+  (`loadStart → searchDestination → getRoute → planTimeline →
+analyzeWeather`) correctly calls `getJourneyWeather` with the plan
+  from `planJourney` and stores the resulting `JourneyWeatherPlan` — the
+  Group L "integration flow" test, using mocked services throughout.
+
+**Live verification — the core claim of this phase, actually
+exercised, not just unit-tested:** a real OSRM route (Kolkata → Salt
+Lake, 370 coordinates, `distanceKm: 12.7473`, `durationMinutes: 18.02`)
+was sent to `POST /api/journey/plan` (8 checkpoints), and that
+`JourneyPlan` was sent to `POST /api/journey/weather`. The response
+contained real, distinct Open-Meteo data per checkpoint — e.g. rain
+probability dropping from 78% at checkpoint 1 to 51% at checkpoint 5 as
+both location and estimated arrival time changed along the route. Under
+real request load, checkpoints 6–8 hit `WEATHER_TIMEOUT` against live
+Open-Meteo while checkpoints 1–5 succeeded — this **is** the partial-
+failure path being exercised for real, not simulated: the response still
+contained all 8 checkpoints, the 3 failed ones carried `weather: null` +
+a `weatherError`, and `summary.weatherAvailableCheckpoints: 5` /
+`weatherUnavailableCheckpoints: 3` reflected it accurately. No raw
+Open-Meteo field names (e.g. `temperature_2m`) appeared anywhere in the
+response. A short (~848m) route was also planned and enriched
+end-to-end, producing exactly 2 checkpoints, both with real weather. An
+invalid journey plan (missing `route`) correctly returned
+`{ "code": "JOURNEY_INVALID_ROUTE" }` with HTTP 400. `npx expo export
+--platform web` bundled successfully, including the extended
+`/dev/journey` screen.
+
+**Not performed:** interactive click-testing of "Analyze Journey
+Weather" and the resulting checkpoint/summary display in a running
+simulator/browser — no display/simulator access in this environment.
