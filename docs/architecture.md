@@ -1,6 +1,6 @@
 # CLOUD6 Architecture
 
-Status: **Phase 5 — Recommendation Engine**. This document describes the architecture
+Status: **Phase 6 — End-to-End Integration**. This document describes the architecture
 established so far, and the intended shape of the system in later phases.
 It does not describe implemented product functionality — see
 `development-roadmap.md` for what is and isn't built yet.
@@ -616,3 +616,123 @@ the component. Displays the primary recommendation (title, message,
 action, priority, reasons) and any additional recommendations. Verified
 to bundle successfully (`npx expo export --platform web`); not
 click-tested in a running simulator/browser in this environment.
+
+## 15. CLOUD6 End-to-End Mobile Flow
+
+```
+📍 Location          🌦️ Weather           👤 User Context      🎯 Recommendation
+LocationService  →  weatherService   →  PersonalizationService  →  RecommendationService
+(+ Geocoding)        (→ CLOUD6 API        (→ CLOUD6 API             (→ CLOUD6 API
+                      → Open-Meteo)         → PERSONA_CONFIG)         → rule engine)
+        │                   │                     │                       │
+        └───────────────────┴──────── dashboardService ────────────────────┘
+                                            │
+                                   usePersonalizedWeather()
+                                            │
+                                    /dev/dashboard screen
+```
+
+Phase 6 does not add any new domain logic — it wires the four existing
+engines (Phases 2–5) into one mobile flow. Every step is an existing
+service call:
+
+1. **Location** — `locationService.getCurrentLocation()` +
+   `geocodingService.reverseGeocode()` (same two services `useLocation()`
+   already composes — see §5a).
+2. **Weather** — `weatherService.getCurrentWeather(location)`, which
+   calls the CLOUD6 backend's `GET /api/weather/current` (§9). The mobile
+   app never calls Open-Meteo.
+3. **User Context** — `personalizationService.createUserContext({ persona, preferredTimeOfDay })`,
+   which calls `POST /api/personalization/context` (§11).
+4. **Recommendation** — `recommendationsService.generate(context, weather)`,
+   which calls `POST /api/recommendations` (§13).
+
+**No new backend endpoint was added.** The existing three endpoints
+(`/api/weather/current`, `/api/personalization/context`,
+`/api/recommendations`) are sufficient; the mobile app is the
+orchestrator. A combined `/api/dashboard` endpoint was considered and
+rejected — it would duplicate sequencing logic the mobile layer already
+needs to own for the persona-change-without-refetch behavior below, and
+nothing in the current architecture requires the backend to know about
+that sequencing.
+
+### `dashboardService` (`apps/mobile/src/services/dashboard/`)
+
+A pure, React-free orchestration module — no hooks, no domain logic —
+with two functions:
+
+- **`getPersonalizedWeatherExperience({ persona, preferredTimeOfDay })`**
+  — the full pipeline. Location is fetched first (weather/recommendation
+  are meaningless without it); weather and the user context are then
+  fetched concurrently (`Promise.all`); the recommendation is only
+  requested once both succeed. Returns a `PersonalizedWeatherResult` —
+  every field can independently be present or carry its own typed error
+  (`LocationError` / `WeatherError` / `PersonalizationError` /
+  `RecommendationError`), so a downstream failure never erases upstream
+  success: if weather succeeds but the recommendation fails, the weather
+  is still returned and displayable.
+- **`regenerateRecommendation(weather, { persona, preferredTimeOfDay })`**
+  — used when only the persona/time selection changes. Re-creates the
+  `UserContext` and re-generates the recommendation using the
+  **already-fetched** weather, without calling `locationService` or
+  `weatherService` again. This is what makes "Runner → Commuter, same
+  weather, different recommendation" work without an unnecessary
+  Open-Meteo round-trip.
+
+### `usePersonalizedWeather()` (`apps/mobile/src/hooks/`)
+
+A thin UI-facing wrapper around `dashboardService` — owns only local
+persona/time selection state and `status`/`statusMessage` bookkeeping.
+`refresh()` calls `getPersonalizedWeatherExperience()` (full pipeline);
+it fires once automatically on mount (not polling — a single fetch), and
+again only when the user taps Refresh. `setPersona()`/
+`setPreferredTimeOfDay()` call `regenerateRecommendation()` with the
+already-fetched weather instead of `refresh()`, which is what keeps
+persona changes cheap. No recommendation/weather/persona logic lives in
+the hook itself — it only sequences calls into `dashboardService` and
+exposes the result.
+
+### `/dev/dashboard` developer screen
+
+`apps/mobile/app/dev/dashboard.tsx` is a temporary, intentionally basic
+screen (marked "DEVELOPMENT / TESTING ONLY") that renders whatever
+`usePersonalizedWeather()` returns — persona/time pickers (from the
+shared `PERSONAS`/`TIME_OF_DAY_OPTIONS` enumerations), location, current
+weather, and the personalized recommendation (title/message/action/
+priority/reasons, plus any secondary recommendations) — with a manual
+Refresh button. Error states use a small `ERROR_MESSAGES` lookup mapping
+each shared error code to the user-facing copy specified for this phase
+(e.g. "We couldn't access your location..."); this is presentation text
+only, not recommendation logic. Verified to bundle successfully (`npx
+expo export --platform web`); not click-tested in a running
+simulator/browser in this environment. Not the final CLOUD6 UI.
+
+## 16. End-to-End Integration Testing
+
+Mobile unit tests — 11 new tests, all mocked, no network/GPS:
+
+- `services/dashboard/dashboardService.test.ts` (7) — successful
+  end-to-end orchestration (result contains location, weather,
+  userContext, and recommendation); location failure (weather never
+  requested); weather failure (recommendation never generated);
+  personalization failure (recommendation never generated, weather still
+  available); recommendation failure (location/weather still available,
+  error represented on the result); persona change via
+  `regenerateRecommendation` (new context + recommendation requested,
+  `locationService`/`weatherService` never called); refresh (re-triggers
+  all four services). All four services (`locationService`,
+  `weatherService`, `personalizationService`, `recommendationsService`)
+  are `jest.mock`ed at the module level.
+- `hooks/usePersonalizedWeather.test.ts` (4) — initial auto-load on
+  mount, error status/message surfacing, refresh re-triggering the full
+  pipeline, and persona change triggering `regenerateRecommendation`
+  instead of a full refresh — using the same `renderHook`/`flush` harness
+  from §8, with `dashboardService` mocked.
+
+**Live verification:** the existing `GET /health`, `GET /api/weather/current`,
+and `POST /api/personalization/context` endpoints were re-verified live
+against the running dev server (unaffected by this phase's mobile-only
+changes). `npx expo export --platform web` bundled successfully (809
+modules, including `/dev/dashboard`). Interactive click-testing of the
+full location → weather → recommendation flow on a simulator/device was
+not performed in this environment.

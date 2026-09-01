@@ -62,7 +62,27 @@ to the next phase.
   live. The mobile `/dev/recommendations` screen bundles successfully but
   was not click-tested in a running simulator/browser in this
   environment.
-- **Phase 6 — Basic Mobile Experience** — ⏳ NOT IMPLEMENTED
+- **Phase 6 — End-to-End Integration** — ✅ IMPLEMENTED, UNIT-TESTED, LIVE-VERIFIED — ⏳ mobile UI click-testing pending
+  Connects Location → Weather → Personalization → Recommendation into one
+  mobile flow, purely by orchestrating existing services — no new domain
+  logic and no new backend endpoint. Mobile `dashboardService`
+  (`getPersonalizedWeatherExperience()` for the full pipeline,
+  `regenerateRecommendation()` so a persona change reuses already-fetched
+  weather instead of re-fetching), `usePersonalizedWeather()` hook
+  (auto-loads once on mount, manual Refresh, no polling), `/dev/dashboard`
+  developer test screen (persona/time pickers, location, weather,
+  personalized recommendation, all sourced from the hook — no domain
+  logic in the component). See `architecture.md` §15. 11 new mobile unit
+  tests pass, all mocked (§16) — including verifying that a persona
+  change never calls `locationService`/`weatherService` again, and that a
+  downstream failure (e.g. recommendation) never hides an upstream
+  success (e.g. weather is still shown). Manually re-verified that the
+  existing `/health`, `/api/weather/current`, and
+  `/api/personalization/context` endpoints still work; `npx expo export
+--platform web` bundled successfully (809 modules) including
+  `/dev/dashboard`. The full location → weather → recommendation flow was
+  not interactively click-tested on a simulator/device in this
+  environment.
 - **Phase 7 — Maps & Routing** — ⏳ NOT IMPLEMENTED
 - **Phase 8 — Route Sampling** — ⏳ NOT IMPLEMENTED
 - **Phase 9 — Journey Weather Intelligence** — ⏳ NOT IMPLEMENTED
@@ -73,4 +93,4 @@ to the next phase.
 - **Phase 14 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 15 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
 
-Do not assume any phase beyond Phase 5 is complete.
+Do not assume any phase beyond Phase 6 is complete.
