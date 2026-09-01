@@ -90,3 +90,87 @@ export const ACTIVITIES: Activity[] = [
   'outdoor',
   'event',
 ];
+
+/** Display-only persona copy for UI pickers (icon/name/description). Not a second source of truth for weatherPriorities/activities — those still come from the backend UserContext. */
+export interface PersonaDisplay {
+  icon: string;
+  displayName: string;
+  description: string;
+}
+
+export const PERSONA_DISPLAY: Record<Persona, PersonaDisplay> = {
+  runner: {
+    icon: '🏃',
+    displayName: 'Runner',
+    description: 'Get insights about heat, rain, UV, and conditions that may affect your run.',
+  },
+  commuter: {
+    icon: '🚗',
+    displayName: 'Commuter',
+    description: 'Stay ahead of rain, wind, and visibility on your way to and from work.',
+  },
+  parent: {
+    icon: '👨‍👩‍👧',
+    displayName: 'Parent',
+    description: 'Know what conditions to expect for school runs and time outside with kids.',
+  },
+  agriculture: {
+    icon: '🌱',
+    displayName: 'Agriculture',
+    description: 'Track rain, humidity, and conditions that matter for crops and fieldwork.',
+  },
+  traveler: {
+    icon: '✈️',
+    displayName: 'Traveler',
+    description: 'See the conditions that could affect your trip, from departure to arrival.',
+  },
+  health: {
+    icon: '❤️',
+    displayName: 'Health',
+    description: 'Watch for heat, air quality, and UV that can affect how you feel outdoors.',
+  },
+  outdoor: {
+    icon: '🌤️',
+    displayName: 'Outdoor',
+    description: 'Plan hikes, walks, and time outside around the conditions that matter most.',
+  },
+  event_planner: {
+    icon: '🎉',
+    displayName: 'Event Planner',
+    description: 'Keep an eye on rain and wind so your outdoor event goes smoothly.',
+  },
+};
+
+/** Display-only copy for the preferred-time-of-day picker. */
+export const TIME_OF_DAY_LABELS: Record<TimeOfDay, string> = {
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+  night: 'Night',
+  flexible: 'Flexible',
+};
+
+/** Display-only copy for the activity picker. */
+export const ACTIVITY_LABELS: Record<Activity, string> = {
+  running: 'Running',
+  commuting: 'Commuting',
+  school: 'School',
+  travel: 'Travel',
+  gardening: 'Gardening',
+  outdoor: 'Outdoor',
+  event: 'Event',
+};
+
+/** Display-only copy for the read-only "CLOUD6 will watch for" weather priority preview. */
+export const WEATHER_PRIORITY_DISPLAY: Record<WeatherPriority, { icon: string; label: string }> = {
+  temperature: { icon: '🌡️', label: 'Temperature' },
+  feels_like: { icon: '🌡️', label: 'Feels Like' },
+  humidity: { icon: '💧', label: 'Humidity' },
+  precipitation: { icon: '🌧️', label: 'Precipitation' },
+  rain_probability: { icon: '🌧️', label: 'Rain' },
+  wind: { icon: '💨', label: 'Wind' },
+  uv: { icon: '☀️', label: 'UV' },
+  visibility: { icon: '👁️', label: 'Visibility' },
+  severe_weather: { icon: '⛈️', label: 'Severe Weather' },
+  air_quality: { icon: '🌫️', label: 'Air Quality' },
+};

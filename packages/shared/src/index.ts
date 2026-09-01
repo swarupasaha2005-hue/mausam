@@ -24,6 +24,13 @@ export type {
   UserContextInput,
 } from './personalization';
 export { PERSONAS, TIME_OF_DAY_OPTIONS, ACTIVITIES } from './personalization';
+export {
+  PERSONA_DISPLAY,
+  TIME_OF_DAY_LABELS,
+  ACTIVITY_LABELS,
+  WEATHER_PRIORITY_DISPLAY,
+} from './personalization';
+export type { PersonaDisplay } from './personalization';
 export { PersonalizationError } from './personalization-error';
 export type { PersonalizationErrorCode } from './personalization-error';
 export type {
