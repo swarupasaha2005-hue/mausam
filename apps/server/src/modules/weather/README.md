@@ -1,7 +1,13 @@
 # weather module
 
-Future responsibility: own weather domain logic — normalizing provider
-responses into CLOUD6's internal weather model, caching, and exposing
-weather data to other modules (personalization, recommendations, journey).
+Phase 3 status: implemented. Owns weather domain logic — coordinate
+validation (reusing `@cloud6/shared`'s `isValidGeoPoint`), caching
+(`weather.cache.ts`), error normalization (`weather.errors.ts`), and the
+`WeatherProvider` port (`weather.types.ts`) that
+`integrations/weather/openmeteo` implements. `weather.service.ts` is the
+only thing routes/other modules should depend on.
 
-Not implemented in Phase 1. Will consume `integrations/weather`.
+`WeatherService.getWeatherAt(point, timestamp)` exists so a future
+Journey Engine can request weather for an arbitrary route point at an
+arbitrary estimated-arrival time, without this phase building journey
+logic itself.

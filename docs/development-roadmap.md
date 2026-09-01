@@ -14,7 +14,20 @@ to the next phase.
   screen, backend coordinate-validation stub. 36 unit tests pass on mocked
   device/geocoding providers (see `architecture.md` §8). Not yet verified
   against real GPS hardware/simulator.
-- **Phase 3 — Weather Engine** — ⏳ NOT IMPLEMENTED
+- **Phase 3 — Weather Engine** — ✅ IMPLEMENTED, UNIT-TESTED, LIVE-VERIFIED — ⏳ mobile UI click-testing pending
+  Open-Meteo integration (`integrations/weather/openmeteo`) behind a
+  `WeatherProvider` port, `WeatherService` (validation, in-memory TTL
+  caching, error normalization, `getWeatherAt` for future Journey use),
+  `GET /api/weather/{current,hourly,daily}`, shared weather models +
+  `WeatherError`, mobile `weatherService` (backend-only, never calls
+  Open-Meteo), `/dev/weather` developer test screen. 57 backend + 4 mobile
+  unit tests pass, all mocked (see `architecture.md` §10). Manually
+  verified against the live Open-Meteo API (current/hourly/daily/air
+  quality all returned real data). Air quality and `getWeatherAt` are
+  implemented and tested but not yet exposed over HTTP — no consumer
+  needs them yet. The mobile `/dev/weather` screen bundles successfully
+  but was not click-tested in a running simulator/browser in this
+  environment.
 - **Phase 4 — Weather Normalization** — ⏳ NOT IMPLEMENTED
 - **Phase 5 — Persona & Personalization Engine** — ⏳ NOT IMPLEMENTED
 - **Phase 6 — Recommendation Engine** — ⏳ NOT IMPLEMENTED
@@ -29,4 +42,4 @@ to the next phase.
 - **Phase 15 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 16 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
 
-Do not assume any phase beyond Phase 1 is complete.
+Do not assume any phase beyond Phase 3 is complete.

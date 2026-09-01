@@ -1,8 +1,9 @@
 # weather integration
 
-Future responsibility: talk to a specific external weather provider and
-translate its response into a provider-agnostic shape the `weather`
-module can consume. No provider is chosen yet — this boundary exists so
-one can be swapped later without touching business logic.
-
-Not implemented in Phase 1.
+Phase 3 status: implemented for Open-Meteo (`openmeteo/`). Talks to the
+external provider and translates its response into CLOUD6's normalized
+weather models — nothing outside `openmeteo.mapper.ts` should see a raw
+Open-Meteo response shape. `modules/weather` depends on the
+`WeatherProvider` interface it implements, not on this package directly,
+so a different provider could be swapped in later without touching the
+module.

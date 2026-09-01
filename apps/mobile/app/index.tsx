@@ -38,6 +38,9 @@ export default function Index() {
       <Link href="/dev/location" style={styles.devLink}>
         Location Engine dev test screen
       </Link>
+      <Link href="/dev/weather" style={styles.devLink}>
+        Weather Engine dev test screen
+      </Link>
     </View>
   );
 }
