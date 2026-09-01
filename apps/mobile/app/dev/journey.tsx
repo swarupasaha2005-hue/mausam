@@ -14,11 +14,13 @@ export default function JourneyTestScreen() {
     start,
     destination,
     route,
+    journeyPlan,
     loading,
     error,
     loadStart,
     searchDestination,
     getRoute,
+    planTimeline,
     refresh,
   } = useJourney();
   const [query, setQuery] = useState('');
@@ -69,6 +71,24 @@ export default function JourneyTestScreen() {
         <Button title="Get Route" onPress={getRoute} disabled={loading || !start || !destination} />
       </Section>
 
+      <Section title="JOURNEY TIMELINE">
+        <Button title="Plan Timeline" onPress={planTimeline} disabled={loading || !route} />
+        {journeyPlan && (
+          <>
+            <Row label="Departure" value={formatTime(journeyPlan.departureTime)} />
+            <Row label="Duration" value={`${journeyPlan.durationMinutes.toFixed(0)} min`} />
+            <Row label="Checkpoints" value={String(journeyPlan.checkpoints.length)} />
+            {journeyPlan.checkpoints.map((checkpoint) => (
+              <View key={checkpoint.sequence} style={styles.checkpoint}>
+                <Text style={styles.checkpointTitle}>P{checkpoint.sequence}</Text>
+                <Row label="Distance" value={`${checkpoint.distanceFromStartKm.toFixed(1)} km`} />
+                <Row label="ETA" value={formatTime(checkpoint.estimatedArrivalTime)} />
+              </View>
+            ))}
+          </>
+        )}
+      </Section>
+
       <Section title="MAP">
         <MapView
           start={start}
@@ -105,6 +125,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       {children}
     </View>
   );
+}
+
+function formatTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -167,5 +191,15 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 14,
+  },
+  checkpoint: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#eee',
+  },
+  checkpointTitle: {
+    fontWeight: '700',
+    marginBottom: 2,
   },
 });

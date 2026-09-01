@@ -105,7 +105,29 @@ to the next phase.
   Leaflet CSS bundle and `/dev/journey`). The interactive
   destination-search → Get Route → map-renders flow was not click-tested
   in a running simulator/browser in this environment.
-- **Phase 8 — Route Sampling** — ⏳ NOT IMPLEMENTED
+- **Phase 8 — Route Sampling + Journey Timeline** — ✅ IMPLEMENTED, UNIT-TESTED, LIVE-VERIFIED — ⏳ mobile UI click-testing pending
+  Pure, deterministic route sampling (`modules/journey`) — reduces a
+  Phase 7 `Route`'s hundreds of coordinates to a small, distance-spaced
+  set of `JourneyCheckpoint`s (Haversine cumulative distance, configurable
+  interval capped at `MAX_CHECKPOINTS: 20`, always including start and
+  destination, never forcing an interval onto a route shorter than it),
+  then attaches a proportional estimated arrival time to each
+  (`elapsed = distance/totalDistance × durationMinutes`, taking an
+  explicit `departureTime` rather than reading the clock). No weather is
+  fetched — see `architecture.md` §19. `POST /api/journey/plan`, shared
+  `JourneyCheckpoint`/`JourneyPlan` models, mobile `journeyService`
+  (backend-only), `useJourney()` extended with `planTimeline()`,
+  `/dev/journey` extended with a Journey Timeline section (departure,
+  duration, checkpoint count, per-checkpoint distance/ETA — no weather).
+  62 backend + 8 mobile unit tests pass, all deterministic (§20).
+  Manually verified against a real live Phase 7 OSRM route (370
+  coordinates, 12.7473km/18.02min) reduced to 8 checkpoints ~1.8km apart
+  with ETAs from 16:00:00.000Z to 16:18:01.200Z exactly matching route
+  duration; an 800m test route correctly produced only 2 checkpoints; an
+  invalid route correctly returned 400. `npx expo export --platform web`
+  bundled successfully. The "Plan Timeline" button and checkpoint list
+  were not click-tested in a running simulator/browser in this
+  environment.
 - **Phase 9 — Journey Weather Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 10 — Journey Risk Engine** — ⏳ NOT IMPLEMENTED
 - **Phase 11 — Departure Time Optimization** — ⏳ NOT IMPLEMENTED
@@ -114,4 +136,4 @@ to the next phase.
 - **Phase 14 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 15 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
 
-Do not assume any phase beyond Phase 7 is complete.
+Do not assume any phase beyond Phase 8 is complete.

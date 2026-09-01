@@ -1,8 +1,14 @@
 # journey module
 
-Future responsibility: Journey Weather Intelligence — route sampling,
-per-point ETA calculation, weather-at-arrival-time lookups, journey risk
-scoring, and departure time optimization. This is CLOUD6's key
-differentiator and will be built as a dedicated subsystem in later phases.
+Phase 8 status: route sampling + journey timeline implemented. Pure,
+deterministic logic — `journey.sampler.ts` reduces a Route's coordinates
+to a small set of distance-spaced `JourneyCheckpoint`s (via
+`journey.distance.ts`'s Haversine cumulative-distance calculation),
+`journey.timeline.ts` attaches a proportional estimated arrival time to
+each. `journey.service.ts` (`POST /api/journey/plan`) validates input and
+composes the two.
 
-Not implemented in Phase 1.
+Does NOT fetch weather, call Open-Meteo, or implement Journey Weather
+Intelligence — that's a future phase that will call
+`WeatherService.getWeatherAt(checkpoint.point, checkpoint.estimatedArrivalTime)`
+per checkpoint using this module's output.

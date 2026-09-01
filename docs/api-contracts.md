@@ -1,9 +1,9 @@
 # CLOUD6 API Contracts
 
-Status: **Phase 7 — Maps + Routing**. Only the endpoints below exist.
-Future endpoints (journey, alerts, users) will be documented here as
-each module is implemented — they are intentionally not speculated on
-yet.
+Status: **Phase 8 — Route Sampling + Journey Timeline**. Only the
+endpoints below exist. Future endpoints (alerts, users) will be
+documented here as each module is implemented — they are intentionally
+not speculated on yet.
 
 ## `GET /health`
 
@@ -345,3 +345,72 @@ that matters for the future Journey Weather Engine.
 `code` is one of `ROUTE_INVALID_COORDINATES` (400), `ROUTE_NOT_FOUND`
 (404), `ROUTE_TIMEOUT` (504), `ROUTE_PROVIDER_ERROR` /
 `ROUTE_REQUEST_FAILED` / `ROUTE_INVALID_RESPONSE` (502).
+
+## Journey
+
+### `POST /api/journey/plan`
+
+Reduces a `Route` (Phase 7) to a small set of distance-spaced,
+timestamped checkpoints. Purely geographic/time — does **not** fetch
+weather. See `architecture.md` §19.
+
+**Request body**
+
+```json
+{
+  "route": {
+    "start": { "latitude": 22.5726, "longitude": 88.3639 },
+    "destination": { "latitude": 22.5958, "longitude": 88.4497 },
+    "distanceKm": 12.7473,
+    "durationMinutes": 18.02,
+    "coordinates": [{ "latitude": 22.5726, "longitude": 88.3639 }]
+  },
+  "departureTime": "2026-09-01T16:00:00.000Z",
+  "options": { "intervalKm": 2, "maxCheckpoints": 20 }
+}
+```
+
+| field                    | required | notes                                         |
+| ------------------------ | -------- | --------------------------------------------- |
+| `route`                  | yes      | normally the output of `GET /api/routes`      |
+| `departureTime`          | no       | ISO 8601 string; defaults to the current time |
+| `options.intervalKm`     | no       | defaults to 2                                 |
+| `options.maxCheckpoints` | no       | defaults to 20                                |
+
+**Response — 200 OK**
+
+```json
+{
+  "route": { "...": "..." },
+  "departureTime": "2026-09-01T16:00:00.000Z",
+  "estimatedArrivalTime": "2026-09-01T16:18:01.200Z",
+  "durationMinutes": 18.02,
+  "checkpoints": [
+    {
+      "sequence": 1,
+      "point": { "latitude": 22.5726, "longitude": 88.3639 },
+      "distanceFromStartKm": 0,
+      "estimatedArrivalTime": "2026-09-01T16:00:00.000Z"
+    },
+    {
+      "sequence": 2,
+      "point": { "latitude": 22.5808, "longitude": 88.3945 },
+      "distanceFromStartKm": 1.82,
+      "estimatedArrivalTime": "2026-09-01T16:02:34.457Z"
+    }
+  ]
+}
+```
+
+`estimatedArrivalTime` on each checkpoint is a proportional estimate
+based on route distance and the provider-estimated route duration — not
+live navigation, and not adjusted for traffic.
+
+**Response — 400 Bad Request**
+
+```json
+{ "error": { "code": "JOURNEY_INVALID_ROUTE", "message": "Invalid route.start" } }
+```
+
+`code` is one of `JOURNEY_INVALID_ROUTE`, `JOURNEY_INVALID_DEPARTURE_TIME`,
+`JOURNEY_INVALID_OPTIONS`.

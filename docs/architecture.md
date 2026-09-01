@@ -1,6 +1,6 @@
 # CLOUD6 Architecture
 
-Status: **Phase 7 — Maps + Routing**. This document describes the architecture
+Status: **Phase 8 — Route Sampling + Journey Timeline**. This document describes the architecture
 established so far, and the intended shape of the system in later phases.
 It does not describe implemented product functionality — see
 `development-roadmap.md` for what is and isn't built yet.
@@ -939,3 +939,170 @@ including the Leaflet CSS bundle and `/dev/journey`).
 running simulator/browser (selecting a destination, tapping Get Route,
 visually confirming markers/polyline) — no display/simulator access in
 this environment. The Expo web bundle succeeding is not the same claim.
+
+## 19. Route Sampling & Journey Timeline
+
+```
+Route.coordinates[] (hundreds of points, unevenly spaced)
+        │
+        ▼
+  cumulativeDistanceKm() — Haversine distance, summed point-to-point
+        │
+        ▼
+  sampleRoute() — pick ~evenly distance-spaced points, always
+                  including start + destination, capped at
+                  JOURNEY_CONFIG.MAX_CHECKPOINTS
+        │
+        ▼
+  SampledPoint[] { sequence, point, distanceFromStartKm }
+        │
+        ▼
+  calculateJourneyTimeline() — proportional ETA:
+    elapsed = (distance / totalDistance) * route.durationMinutes
+        │
+        ▼
+  JourneyCheckpoint[] { sequence, point, distanceFromStartKm,
+                        estimatedArrivalTime }
+        │
+        ▼
+  JourneyPlan { route, departureTime, estimatedArrivalTime,
+                durationMinutes, checkpoints }
+```
+
+**Weather is NOT fetched in this phase.** `journey.sampler.ts` and
+`journey.timeline.ts` are pure functions — no I/O, no external calls, no
+knowledge of `modules/weather` or Open-Meteo. This phase exists solely to
+produce the two things a future Journey Weather Engine needs per
+checkpoint: `point` (where) and `estimatedArrivalTime` (when), so it can
+call the already-existing `WeatherService.getWeatherAt(point,
+estimatedArrivalTime)` (built in Phase 3 for exactly this) — that call is
+not made here.
+
+**Why distance-based sampling, not "every Nth coordinate."** OSRM's
+polyline coordinates are not evenly spaced (dense through turns, sparse
+on straight stretches — see the 370-point real route in §20's live
+verification). Taking every Nth coordinate would produce unevenly spaced
+checkpoints in real distance. Instead, `sampleRoute()` computes
+cumulative distance along the polyline (`journey.distance.ts`,
+Haversine — reusing nothing that needed reimplementing, since no
+distance utility existed yet) and picks the coordinate nearest to each
+target distance.
+
+**Adapting to route length**
+(`apps/server/src/modules/journey/journey.config.ts`:
+`DEFAULT_SAMPLE_INTERVAL_KM: 2`, `MIN_SAMPLE_INTERVAL_KM: 0.5`,
+`MAX_CHECKPOINTS: 20`):
+
+- **Short routes** (≤ the requested interval, e.g. an 800m trip): exactly
+  start + destination, 2 checkpoints. No interval is forced onto a route
+  shorter than it.
+- **Normal routes**: checkpoints at roughly `intervalKm` spacing between
+  start and destination.
+- **Long routes** (e.g. 100km at a 2km interval would be 51 points): the
+  _effective_ interval widens so the checkpoint count never exceeds
+  `MAX_CHECKPOINTS`, rather than truncating the route or silently
+  dropping the destination.
+
+**Timeline is an estimate, stated as such.** `calculateJourneyTimeline()`
+computes `elapsed = (distance / totalDistance) × durationMinutes` — a
+proportional model using only what Phase 7's `RoutingService` already
+provides. It does not account for traffic, road speed, or vehicle type,
+and is documented as "estimated arrival time based on route distance and
+provider-estimated route duration," not live navigation. It is a pure
+function of `(checkpoints, totalDistanceKm, durationMinutes,
+departureTime: Date)` — it never calls `Date.now()` itself, so the same
+inputs always produce the same output (see the determinism tests in
+§20). The orchestration boundary (`JourneyService`) is the only place
+that defaults `departureTime` to "now" when the caller omits it.
+
+**`JourneyPlan`** (`packages/shared/src/journey.ts`) wraps the existing
+`Route` (Phase 7) rather than duplicating route fields, plus
+`departureTime`, `estimatedArrivalTime` (the last checkpoint's ETA),
+`durationMinutes`, and `checkpoints: JourneyCheckpoint[]`. The original
+`route.coordinates` is never mutated — checkpoints are a derived,
+separate array, so a future phase can still render the full polyline on
+a map alongside the reduced checkpoints.
+
+**API decision: `POST /api/journey/plan` was created.** Unlike some
+optional endpoints in earlier phases, this one was worth adding — it
+makes the sampling/timeline logic directly testable end-to-end against a
+real Phase 7 route (see the live verification in §20) and gives
+`/dev/journey` a natural way to demonstrate the pipeline without
+duplicating any sampling math on the client. Input: `{ route,
+departureTime?, options? }`; output: the normalized `JourneyPlan` — see
+`api-contracts.md`.
+
+**Mobile.** `apps/mobile/src/services/journey/journeyService.ts` calls
+only `/api/journey/plan` and contains no sampling/timeline math.
+`useJourney()` (extended, not duplicated — see §17) gained a
+`planTimeline()` action and `journeyPlan` state, only callable once a
+`route` exists. `/dev/journey` gained a "JOURNEY TIMELINE" section
+listing departure time, duration, checkpoint count, and each
+checkpoint's distance/ETA — no weather, no recommendation, no final UI
+styling, per this phase's scope.
+
+## 20. Route Sampling + Journey Timeline Testing
+
+Backend unit tests — 62 new tests, fully deterministic, no I/O:
+
+- `modules/journey/journey.distance.test.ts` (7) — Haversine distance
+  for the same point (0), nearby points, a known Kolkata↔Salt Lake pair,
+  symmetry; cumulative distance starting at 0, monotonically increasing
+  across multiple segments, and a single-coordinate edge case.
+- `modules/journey/journey.sampler.test.ts` (12) — a ~200m route
+  producing exactly start+destination (not forced into a 2km interval);
+  a ~10km route including start first/destination last, strictly
+  increasing distance and sequence, a reasonable checkpoint count at the
+  default interval, and more checkpoints for a smaller interval; a long
+  (~100km, 100-coordinate) route never exceeding
+  `MAX_CHECKPOINTS` while still including start/destination; determinism
+  for repeated calls with identical input.
+- `modules/journey/journey.timeline.test.ts` (7) — start checkpoint ETA
+  = departure time; destination ETA ≈ departure + duration; the
+  documented 10km/30min → 5km/+15min proportional example; the
+  documented 12km/36min → 7-checkpoint timeline example exactly;
+  determinism; no division-by-zero for a zero-distance route; sequence/
+  point fields preserved.
+- `modules/journey/journey.service.test.ts` (13) — a valid route produces
+  a full `JourneyPlan`; `departureTime` defaults to "now" when omitted;
+  custom `intervalKm` changes checkpoint count; missing route, missing/
+  empty coordinates, an invalid coordinate, negative distance, and an
+  invalid duration type all rejected with `JOURNEY_INVALID_ROUTE`; an
+  unparseable `departureTime` rejected with
+  `JOURNEY_INVALID_DEPARTURE_TIME`; an invalid `intervalKm` rejected with
+  `JOURNEY_INVALID_OPTIONS`; determinism for identical
+  route+options+departureTime.
+- `routes/journey.test.ts` (5) — supertest against the real Express
+  `app` for `POST /api/journey/plan`: valid request, invalid route,
+  invalid departure time, invalid sampling options, missing route.
+
+Mobile unit tests — 8 new tests:
+
+- `services/journey/journeyService.test.ts` (3) — calls the CLOUD6
+  backend, normalizes backend error responses and network failures into
+  `JourneyError`.
+- `hooks/useJourney.test.ts` (+2, appended to the existing Phase 7 file)
+  — `planTimeline()` requires a route first; fetches and stores a
+  `JourneyPlan` once a route exists.
+
+Fixtures: `apps/server/test/fixtures/cloud6/journey.ts` — a ~10km
+straight-line route, a ~200m short route, and a ~100km/100-coordinate
+long route, reused across all four backend journey test files.
+
+**Live verification:** the running dev server's real Phase 7 route
+(Park Street area → Salt Lake, 370 coordinates, `distanceKm: 12.7473`,
+`durationMinutes: 18.02`, from live OSRM) was fed directly into
+`POST /api/journey/plan`. It returned 8 checkpoints spaced roughly 1.8km
+apart, in strictly increasing distance order, with ETAs from
+`16:00:00.000Z` (departure) to `16:18:01.200Z` — exactly matching the
+route's 18.02-minute duration. An 800m test route correctly produced
+only 2 checkpoints (start + destination), confirming short journeys
+aren't force-fitted into the 2km default interval. An invalid route
+(missing `start`) correctly returned
+`{ "code": "JOURNEY_INVALID_ROUTE" }` with HTTP 400. `npx expo export
+--platform web` bundled successfully, including the extended
+`/dev/journey` screen.
+
+**Not performed:** interactive click-testing of the "Plan Timeline"
+button and checkpoint list in a running simulator/browser — no
+display/simulator access in this environment.

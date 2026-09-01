@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 
 import { healthRouter } from './routes/health';
+import { journeyRouter } from './routes/journey';
 import { personalizationRouter } from './routes/personalization';
 import { recommendationsRouter } from './routes/recommendations';
 import { routesRouter } from './routes/routes';
@@ -16,3 +17,4 @@ app.use('/api/weather', weatherRouter);
 app.use('/api/personalization', personalizationRouter);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/routes', routesRouter);
+app.use('/api/journey', journeyRouter);

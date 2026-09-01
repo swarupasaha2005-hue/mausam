@@ -1,35 +1,49 @@
 import { useCallback, useState } from 'react';
-import { LocationError, RouteError, type GeoPoint, type Route } from '@cloud6/shared';
+import {
+  JourneyError,
+  LocationError,
+  RouteError,
+  type GeoPoint,
+  type JourneyPlan,
+  type Route,
+} from '@cloud6/shared';
 import { geocodingService, locationService } from '../services/location';
+import { journeyService } from '../services/journey';
 import { routingService } from '../services/routing';
+
+type JourneyHookError = LocationError | RouteError | JourneyError;
 
 interface UseJourneyState {
   start: GeoPoint | null;
   destination: GeoPoint | null;
   route: Route | null;
+  journeyPlan: JourneyPlan | null;
   loading: boolean;
-  error: LocationError | RouteError | null;
+  error: JourneyHookError | null;
 }
 
 interface UseJourneyResult extends UseJourneyState {
   loadStart: () => Promise<void>;
   searchDestination: (query: string) => Promise<void>;
   getRoute: () => Promise<void>;
+  planTimeline: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
 /**
  * Thin orchestration hook: uses LocationService for the start point,
- * GeocodingService for destination text search, and routingService for
- * the route itself. No OSRM-specific or routing-provider logic lives
- * here — that stays in the backend RoutingService.
+ * GeocodingService for destination text search, routingService for the
+ * route, and journeyService for the sampled checkpoint timeline. No
+ * routing-provider or sampling/timeline math lives here — that stays on
+ * the backend.
  */
 export function useJourney(): UseJourneyResult {
   const [start, setStart] = useState<GeoPoint | null>(null);
   const [destination, setDestination] = useState<GeoPoint | null>(null);
   const [route, setRoute] = useState<Route | null>(null);
+  const [journeyPlan, setJourneyPlan] = useState<JourneyPlan | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<LocationError | RouteError | null>(null);
+  const [error, setError] = useState<JourneyHookError | null>(null);
 
   const loadStart = useCallback(async () => {
     setLoading(true);
@@ -48,6 +62,7 @@ export function useJourney(): UseJourneyResult {
     setLoading(true);
     setError(null);
     setRoute(null);
+    setJourneyPlan(null);
     try {
       const [point] = await geocodingService.geocode(query);
       if (!point) {
@@ -70,6 +85,7 @@ export function useJourney(): UseJourneyResult {
 
     setLoading(true);
     setError(null);
+    setJourneyPlan(null);
     try {
       const result = await routingService.getRoute(start, destination);
       setRoute(result);
@@ -80,6 +96,26 @@ export function useJourney(): UseJourneyResult {
     }
   }, [start, destination]);
 
+  const planTimeline = useCallback(async () => {
+    if (!route) {
+      setError(
+        new JourneyError('JOURNEY_INVALID_ROUTE', 'A route is required before planning a timeline'),
+      );
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const plan = await journeyService.planJourney(route);
+      setJourneyPlan(plan);
+    } catch (cause) {
+      setError(cause instanceof JourneyError ? cause : new JourneyError('JOURNEY_INVALID_ROUTE'));
+    } finally {
+      setLoading(false);
+    }
+  }, [route]);
+
   const refresh = useCallback(async () => {
     if (!destination) {
       await loadStart();
@@ -88,6 +124,7 @@ export function useJourney(): UseJourneyResult {
 
     setLoading(true);
     setError(null);
+    setJourneyPlan(null);
     try {
       const point = await locationService.getCurrentLocation();
       setStart(point);
@@ -108,11 +145,13 @@ export function useJourney(): UseJourneyResult {
     start,
     destination,
     route,
+    journeyPlan,
     loading,
     error,
     loadStart,
     searchDestination,
     getRoute,
+    planTimeline,
     refresh,
   };
 }
