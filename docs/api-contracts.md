@@ -1,9 +1,9 @@
 # CLOUD6 API Contracts
 
-Status: **Phase 3 — Weather Engine**. Only the endpoints below exist.
-Future endpoints (location, journey, personalization, recommendations,
-alerts, users) will be documented here as each module is implemented —
-they are intentionally not speculated on yet.
+Status: **Phase 4 — Personalization**. Only the endpoints below exist.
+Future endpoints (location, journey, recommendations, alerts, users) will
+be documented here as each module is implemented — they are
+intentionally not speculated on yet.
 
 ## `GET /health`
 
@@ -153,3 +153,53 @@ implemented and unit-tested (and `getAirQuality` was verified against the
 live Open-Meteo air-quality API — see `architecture.md` §9), but have no
 HTTP route yet since nothing currently consumes one. Add a route when a
 real feature needs air quality or point-in-time weather over HTTP.
+
+## Personalization
+
+### `POST /api/personalization/context`
+
+Creates a normalized `UserContext` from a persona (and optional
+preferences). Does not fetch weather and does not return
+recommendations — see `architecture.md` §11.
+
+**Request body**
+
+```json
+{
+  "persona": "runner",
+  "preferredTimeOfDay": "morning"
+}
+```
+
+| field                | required | notes                                                                                                  |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `persona`            | yes      | one of `runner`, `commuter`, `parent`, `agriculture`, `traveler`, `health`, `outdoor`, `event_planner` |
+| `preferredTimeOfDay` | no       | one of `morning`, `afternoon`, `evening`, `night`, `flexible`; defaults to `flexible`                  |
+| `activities`         | no       | array of activity strings; defaults to the persona's configured activities                             |
+
+**Response — 200 OK**
+
+```json
+{
+  "persona": "runner",
+  "activities": ["running"],
+  "preferredTimeOfDay": "morning",
+  "weatherPriorities": [
+    "temperature",
+    "feels_like",
+    "humidity",
+    "precipitation",
+    "rain_probability",
+    "wind",
+    "uv"
+  ]
+}
+```
+
+**Response — 400 Bad Request**
+
+```json
+{ "error": { "code": "PERSONA_INVALID", "message": "Unknown persona: astronaut" } }
+```
+
+`code` is one of `PERSONA_INVALID`, `TIME_INVALID`, `ACTIVITY_INVALID`.

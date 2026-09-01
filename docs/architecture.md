@@ -1,6 +1,6 @@
 # CLOUD6 Architecture
 
-Status: **Phase 3 — Weather Engine**. This document describes the architecture
+Status: **Phase 4 — Personalization**. This document describes the architecture
 established so far, and the intended shape of the system in later phases.
 It does not describe implemented product functionality — see
 `development-roadmap.md` for what is and isn't built yet.
@@ -374,3 +374,102 @@ state. It has been verified to bundle successfully (`npx expo export
 --platform web`); it has not been click-tested in a running
 simulator/browser session in this environment. Not part of the final
 CLOUD6 UI.
+
+## 11. Personalization Engine
+
+```
+User Context (persona + preferred time + activities)
+        │
+        ▼
+   PersonalizationService (modules/personalization)
+        │  reads from
+        ▼
+   PERSONA_CONFIG (persona.config.ts)
+        │
+        ▼
+   UserContext { persona, activities, preferredTimeOfDay, weatherPriorities }
+        │
+        ▼
+   (future) RecommendationEngine — combines this with WeatherService's
+   WeatherSnapshot/WeatherForecast to produce actual recommendations
+```
+
+This phase answers "who is this user and what weather info matters to
+them" — it does **not** generate recommendations. `PersonalizationService`
+never imports anything from `modules/weather` or the Open-Meteo
+integration; it only knows the _names_ of weather factors (e.g.
+`'uv'`, `'rain_probability'`) that a persona cares about, as a
+`WeatherPriority[]`. A future `RecommendationService` is the only place
+that will combine `UserContext` with a `WeatherSnapshot`.
+
+**Personas** (`packages/shared/src/personalization.ts`): `runner`,
+`commuter`, `parent`, `agriculture`, `traveler`, `health`, `outdoor`,
+`event_planner`. Each has a `PersonaConfig` (display name, description,
+`weatherPriorities`, default `activities`, `concerns`) defined in
+`apps/server/src/modules/personalization/persona.config.ts` as a plain
+map (`PERSONA_CONFIG: Record<Persona, PersonaConfig>`) — adding or
+changing a persona means editing one object, not branching logic.
+
+**Why persona → activity is a config, not a branch.** `PersonalizationService.createUserContext`
+looks up `PERSONA_CONFIG[persona]` rather than an `if/else` chain, so the
+persona → weather-priorities → default-activity mapping lives in exactly
+one place.
+
+**Shared enumerations.** `PERSONAS`, `TIME_OF_DAY_OPTIONS`, and
+`ACTIVITIES` live in `@cloud6/shared` and are used by both backend
+validation (`personalization.validation.ts`) and the mobile `/dev/persona`
+picker UI — the list of valid personas is defined once, not duplicated
+between backend and mobile.
+
+**Mobile side.** `apps/mobile/src/services/personalization/personalizationService.ts`
+calls the CLOUD6 backend (`POST /api/personalization/context`) — it does
+not duplicate persona configuration. `usePersonalization()`
+(`apps/mobile/src/hooks/usePersonalization.ts`) holds local selection
+state (persona, preferred time) and re-fetches the resulting `UserContext`
+whenever the selection changes. This state is intentionally
+non-persistent for the prototype — no AsyncStorage, no backend user
+storage, no auth.
+
+## 12. Personalization Testing
+
+Backend unit tests — 67 tests, deterministic, no network:
+
+- `modules/personalization/persona.config.test.ts` — every persona has a
+  display name, description, non-empty weather priorities, and defined
+  activities; persona-specific priority assertions (e.g. runner includes
+  `temperature`/`humidity`/`precipitation`/`uv`).
+- `modules/personalization/personalization.service.test.ts` —
+  `getPersonaConfig`/`getWeatherPriorities`/`createUserContext`: valid
+  input, default `preferredTimeOfDay`/`activities`, invalid persona, invalid
+  time, invalid activity.
+- `routes/personalization.test.ts` — supertest against the real Express
+  `app` for `POST /api/personalization/context`: valid request, default
+  time, invalid persona/time/activity, malformed (missing persona) body.
+
+Mobile unit tests — 9 tests:
+
+- `services/personalization/personalizationService.test.ts` (4) — calls
+  the CLOUD6 backend, normalizes backend error responses, network
+  failures, and malformed JSON into `PersonalizationError`, against a
+  mocked `fetch` (never the live backend).
+- `hooks/usePersonalization.test.ts` (5) — initial fetch, refetch on
+  persona change, refetch on time change, error surfacing without a
+  crash — using the same `renderHook`/`flush` harness from §8, with
+  `personalizationService` mocked.
+
+**Live verification:** the running dev server's
+`POST /api/personalization/context` was hit directly for a valid
+runner/morning request, a request with an omitted (defaulted) time, an
+invalid persona, an invalid time, and a missing body — all returned the
+expected normalized response or 400 error.
+
+### `/dev/persona` developer screen
+
+`apps/mobile/app/dev/persona.tsx` is a temporary, intentionally basic
+screen (marked "DEVELOPMENT / TESTING ONLY") that exercises
+`usePersonalization()` directly — buttons for each persona and each
+preferred time (from the shared `PERSONAS`/`TIME_OF_DAY_OPTIONS`
+enumerations, not hardcoded in the component), showing the resulting
+`UserContext` and weather priorities. Verified to bundle successfully
+(`npx expo export --platform web`); not click-tested in a running
+simulator/browser in this environment. Not part of the final CLOUD6 UI.

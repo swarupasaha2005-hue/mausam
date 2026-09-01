@@ -28,18 +28,32 @@ to the next phase.
   needs them yet. The mobile `/dev/weather` screen bundles successfully
   but was not click-tested in a running simulator/browser in this
   environment.
-- **Phase 4 — Weather Normalization** — ⏳ NOT IMPLEMENTED
-- **Phase 5 — Persona & Personalization Engine** — ⏳ NOT IMPLEMENTED
-- **Phase 6 — Recommendation Engine** — ⏳ NOT IMPLEMENTED
-- **Phase 7 — Basic Mobile Experience** — ⏳ NOT IMPLEMENTED
-- **Phase 8 — Maps & Routing** — ⏳ NOT IMPLEMENTED
-- **Phase 9 — Route Sampling** — ⏳ NOT IMPLEMENTED
-- **Phase 10 — Journey Weather Intelligence** — ⏳ NOT IMPLEMENTED
-- **Phase 11 — Journey Risk Engine** — ⏳ NOT IMPLEMENTED
-- **Phase 12 — Departure Time Optimization** — ⏳ NOT IMPLEMENTED
-- **Phase 13 — AI Explanation Layer** — ⏳ NOT IMPLEMENTED
-- **Phase 14 — Contextual Alerts** — ⏳ NOT IMPLEMENTED
-- **Phase 15 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
-- **Phase 16 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
+- **Phase 4 — Persona & Personalization Engine** — ✅ IMPLEMENTED, UNIT-TESTED, LIVE-VERIFIED — ⏳ mobile UI click-testing pending
+  (Note: weather normalization, originally planned as a separate phase,
+  was already completed as part of Phase 3's Open-Meteo mapper.) Shared
+  `Persona`/`Activity`/`TimeOfDay`/`WeatherPriority`/`UserContext` types +
+  `PersonalizationError`, backend `PersonaConfig` map for all 8 personas
+  (`persona.config.ts`), `PersonalizationService.createUserContext()`,
+  `POST /api/personalization/context`, mobile `personalizationService`
+  (backend-only) + `usePersonalization()` hook, `/dev/persona` developer
+  test screen. Does not fetch weather and does not generate
+  recommendations — see `architecture.md` §11. 67 backend + 9 mobile unit
+  tests pass, all mocked (see `architecture.md` §12). Manually verified
+  against the live backend (`POST /api/personalization/context` for a
+  valid request, defaulted time, invalid persona, invalid time, and a
+  missing body). The mobile `/dev/persona` screen bundles successfully
+  but was not click-tested in a running simulator/browser in this
+  environment.
+- **Phase 5 — Recommendation Engine** — ⏳ NOT IMPLEMENTED
+- **Phase 6 — Basic Mobile Experience** — ⏳ NOT IMPLEMENTED
+- **Phase 7 — Maps & Routing** — ⏳ NOT IMPLEMENTED
+- **Phase 8 — Route Sampling** — ⏳ NOT IMPLEMENTED
+- **Phase 9 — Journey Weather Intelligence** — ⏳ NOT IMPLEMENTED
+- **Phase 10 — Journey Risk Engine** — ⏳ NOT IMPLEMENTED
+- **Phase 11 — Departure Time Optimization** — ⏳ NOT IMPLEMENTED
+- **Phase 12 — AI Explanation Layer** — ⏳ NOT IMPLEMENTED
+- **Phase 13 — Contextual Alerts** — ⏳ NOT IMPLEMENTED
+- **Phase 14 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
+- **Phase 15 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
 
-Do not assume any phase beyond Phase 3 is complete.
+Do not assume any phase beyond Phase 4 is complete.

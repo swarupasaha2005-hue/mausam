@@ -41,6 +41,9 @@ export default function Index() {
       <Link href="/dev/weather" style={styles.devLink}>
         Weather Engine dev test screen
       </Link>
+      <Link href="/dev/persona" style={styles.devLink}>
+        Personalization dev test screen
+      </Link>
     </View>
   );
 }

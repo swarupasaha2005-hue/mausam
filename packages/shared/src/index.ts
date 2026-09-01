@@ -14,3 +14,15 @@ export type {
 } from './weather';
 export { WeatherError } from './weather-error';
 export type { WeatherErrorCode } from './weather-error';
+export type {
+  Persona,
+  Activity,
+  TimeOfDay,
+  WeatherPriority,
+  PersonaConfig,
+  UserContext,
+  UserContextInput,
+} from './personalization';
+export { PERSONAS, TIME_OF_DAY_OPTIONS, ACTIVITIES } from './personalization';
+export { PersonalizationError } from './personalization-error';
+export type { PersonalizationErrorCode } from './personalization-error';
