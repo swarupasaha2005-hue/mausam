@@ -99,11 +99,53 @@ consumes it.
 ## 5. Shared package (`packages/shared`)
 
 Holds TypeScript types shared between mobile and server, imported as
-`@cloud6/shared`. Phase 1 only defines `GeoPoint` (`latitude`,
-`longitude`) — the minimum needed to avoid duplicating a coordinate type
-across workspaces. Weather and journey domain models are intentionally
-deferred to the phases that define them, so they're designed once,
-correctly, against real requirements instead of guessed early.
+`@cloud6/shared`. Phase 1 defined `GeoPoint` (`latitude`, `longitude`).
+Phase 2 added `Location` (a `GeoPoint` plus optional `name`/`address`/
+`city`/`state`/`country` — deliberately no weather fields), coordinate
+validation (`isValidGeoPoint`, `MIN_LATITUDE`/`MAX_LATITUDE`/
+`MIN_LONGITUDE`/`MAX_LONGITUDE`), and `LocationError` with normalized
+error codes (`LOCATION_PERMISSION_DENIED`, `LOCATION_UNAVAILABLE`,
+`LOCATION_TIMEOUT`, `LOCATION_INVALID`, `GEOCODING_FAILED`). Weather and
+journey domain models are intentionally deferred to the phases that
+define them, so they're designed once, correctly, against real
+requirements instead of guessed early.
+
+## 5a. Location Engine (`apps/mobile/src/services/location`)
+
+Location acquisition happens entirely on the mobile device — the backend
+does not access GPS. The flow:
+
+```
+LocationTestScreen / future UI
+        │
+        ▼
+    useLocation()
+        │
+        ▼
+   LocationService ──────────────► GeocodingService
+        │                                │
+        ▼                                ▼
+DeviceLocationProvider          GeocodingProvider
+  (expo | mock)                    (expo)
+        │                                │
+        ▼                                ▼
+   device GPS                  reverse geocoding
+```
+
+- `LocationService` depends on a `DeviceLocationProvider` interface, not
+  directly on `expo-location`. `expoDeviceLocationProvider` wraps the real
+  Expo API; `mockDeviceLocationProvider` returns fixed coordinates for
+  development environments without working GPS. The provider is selected
+  via `EXPO_PUBLIC_LOCATION_PROVIDER=mock` (see `apps/mobile/.env.example`)
+  — never implicit, never used in production builds.
+- `GeocodingService` depends on a `GeocodingProvider` interface the same
+  way, currently backed by Expo's reverse-geocoding API.
+- Both services normalize provider-specific errors into `LocationError`
+  with one of the shared error codes — nothing outside these services
+  should see a raw Expo/provider error.
+- `useLocation()` is the only interface the rest of the mobile app should
+  use; it owns component state (`location`, `loading`, `error`,
+  `permissionStatus`) and never imports `expo-location` itself.
 
 ## 6. Journey Weather Intelligence (future)
 
@@ -139,3 +181,61 @@ without restructuring the app.
 5. Cross-cutting types live in `packages/shared`.
 6. No unnecessary abstraction: no DI framework, no microservices, no
    database, no speculative interfaces without a near-term consumer.
+
+## 8. Location Engine Testing
+
+Unit tests cover `packages/shared` (Jest + ts-jest) and
+`apps/mobile/src` (Jest via the `jest-expo` preset). 36 tests, all
+passing:
+
+- `packages/shared/src/geo.test.ts` — `isValidGeoPoint` boundary and
+  malformed-input cases (11 tests).
+- `apps/mobile/src/services/location/locationService.test.ts` —
+  permission states, successful retrieval, and every `LocationError` path
+  (denied, unavailable, provider failure, invalid coordinates), against a
+  fake `DeviceLocationProvider` (11 tests).
+- `apps/mobile/src/services/location/geocodingService.test.ts` — success,
+  provider failure → `GEOCODING_FAILED`, empty/partial results, against a
+  fake `GeocodingProvider` (3 tests).
+- `apps/mobile/src/hooks/useLocation.test.ts` — initial state, permission
+  request outcomes, successful refresh, loading transitions, reverse-geocoding
+  failure not invalidating coordinates, and error surfacing, with
+  `locationService`/`geocodingService` mocked via `jest.mock` (10 tests).
+
+**What's mocked:** all device GPS and geocoding calls — `expo-location`
+is never invoked in unit tests. `LocationService`/`GeocodingService` take
+their provider via constructor injection specifically so tests can supply
+a fake `DeviceLocationProvider`/`GeocodingProvider` instead.
+
+**What requires a real device:** `expoDeviceLocationProvider` and
+`expoGeocodingProvider` themselves (untested by unit tests, since they're
+thin wrappers with no branching logic) and the end-to-end flow — actual
+permission prompts, actual GPS coordinates, actual reverse geocoding.
+That must be exercised on a simulator/device via the `/dev/location`
+developer screen; it has not been done as of this phase.
+
+**Test harness note:** `useLocation.test.ts` uses a small custom
+`renderHook`/`flush` helper (`apps/mobile/src/test-utils/renderHook.ts`)
+built directly on `react-test-renderer` rather than
+`@testing-library/react-native`'s `renderHook` — the latter ships its own
+React 19 concurrent renderer that conflicted with `jest-expo`'s bundled
+`react-test-renderer`, causing duplicate-renderer failures. The custom
+helper avoids that by using only the renderer `jest-expo` already
+provides.
+
+**Mock location provider (development only):** setting
+`EXPO_PUBLIC_LOCATION_PROVIDER=mock` (see `apps/mobile/.env.example`)
+makes `LocationService` use `mockDeviceLocationProvider` (fixed
+coordinates, always-granted permission) instead of real GPS — useful when
+a simulator or CI environment can't provide location. It is never
+selected implicitly and must not be set in production builds.
+
+### `/dev/location` developer screen
+
+`apps/mobile/app/dev/location.tsx` is a temporary, intentionally basic
+screen that exercises the production `useLocation()` hook (no duplicate
+location logic) to manually verify permission requests, current-location
+retrieval, refresh, and error display. It is marked
+"DEVELOPMENT / TESTING ONLY" in the UI and is not part of the final
+CLOUD6 product UI — it will be removed once real screens consume
+`useLocation()` directly.

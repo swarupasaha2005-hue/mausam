@@ -7,7 +7,13 @@ to the next phase.
   Monorepo, Expo mobile boot screen, Express backend with `/health`,
   shared package with `GeoPoint`, docs, lint/format/typecheck tooling.
 
-- **Phase 2 — Location Engine** — ⏳ NOT IMPLEMENTED
+- **Phase 2 — Location Engine** — ✅ IMPLEMENTED, UNIT-TESTED — ⏳ real-device GPS verification pending
+  Shared `GeoPoint`/`Location` types + coordinate validation, mobile
+  `LocationService`/`GeocodingService` (device-provider abstraction, Expo +
+  mock providers), `useLocation()` hook, `/dev/location` developer test
+  screen, backend coordinate-validation stub. 36 unit tests pass on mocked
+  device/geocoding providers (see `architecture.md` §8). Not yet verified
+  against real GPS hardware/simulator.
 - **Phase 3 — Weather Engine** — ⏳ NOT IMPLEMENTED
 - **Phase 4 — Weather Normalization** — ⏳ NOT IMPLEMENTED
 - **Phase 5 — Persona & Personalization Engine** — ⏳ NOT IMPLEMENTED

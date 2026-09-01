@@ -8,11 +8,13 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
   },
   "dependencies": {
     "@cloud6/shared": "*",
     "expo": "~57.0.18",
+    "expo-location": "~57.0.14",
     "expo-router": "~57.0.17",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
@@ -23,7 +25,10 @@
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
+    "jest": "^29.7.0",
+    "jest-expo": "~57.0.5",
     "typescript": "~6.0.3"
   }
 }

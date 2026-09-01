@@ -12,7 +12,8 @@
     "mobile": "npm run start --workspace @cloud6/mobile",
     "server": "npm run dev --workspace @cloud6/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "eslint apps/server/src apps/mobile/app packages/shared/src --ext .ts,.tsx",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "eslint apps/server/src apps/mobile/app apps/mobile/src packages/shared/src --ext .ts,.tsx",
     "format": "prettier --write ."
   },
   "devDependencies": {
@@ -25,5 +26,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "overrides": {
+    "react": "19.2.3"
   }
 }
