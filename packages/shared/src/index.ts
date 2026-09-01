@@ -26,3 +26,14 @@ export type {
 export { PERSONAS, TIME_OF_DAY_OPTIONS, ACTIVITIES } from './personalization';
 export { PersonalizationError } from './personalization-error';
 export type { PersonalizationErrorCode } from './personalization-error';
+export type {
+  RecommendationType,
+  RecommendationPriority,
+  RecommendationFactor,
+  Recommendation,
+  RecommendationResult,
+  RecommendationInput,
+} from './recommendation';
+export { FACTOR_PRIORITY } from './recommendation';
+export { RecommendationError } from './recommendation-error';
+export type { RecommendationErrorCode } from './recommendation-error';

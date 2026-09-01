@@ -1,6 +1,6 @@
 # CLOUD6 Architecture
 
-Status: **Phase 4 — Personalization**. This document describes the architecture
+Status: **Phase 5 — Recommendation Engine**. This document describes the architecture
 established so far, and the intended shape of the system in later phases.
 It does not describe implemented product functionality — see
 `development-roadmap.md` for what is and isn't built yet.
@@ -473,3 +473,146 @@ enumerations, not hardcoded in the component), showing the resulting
 `UserContext` and weather priorities. Verified to bundle successfully
 (`npx expo export --platform web`); not click-tested in a running
 simulator/browser in this environment. Not part of the final CLOUD6 UI.
+
+## 13. Recommendation Engine
+
+```
+CurrentWeather  +  UserContext
+        │
+        ▼
+   RecommendationService (modules/recommendations)
+        │  validates input, then calls
+        ▼
+   generateRecommendations() (recommendation.engine.ts — pure function)
+        │
+        ├─ evaluateFactors(weather) → RecommendationFactor[]     (recommendation.rules.ts)
+        ├─ filter by persona relevance (context.weatherPriorities)
+        └─ buildRecommendation(persona, factor) → Recommendation  (persona-flavored templates)
+        │
+        ▼
+   RecommendationResult { primaryRecommendation, recommendations, evaluatedFactors }
+        │
+        ▼
+   (future) AI Explanation Layer — turns this structured result into
+   natural-language explanation. Does not replace this decision logic.
+```
+
+**This layer is deterministic, not AI.** `generateRecommendations` is a
+pure function: given the same weather and context it always returns the
+same result, and every recommendation carries `reasons: RecommendationFactor[]`
+naming exactly which threshold(s) triggered it — that's the
+"explainable" property an LLM call couldn't give for free. **Recommendation
+Engine = deterministic decision logic. AI Explanation Layer (future,
+separate phase) = natural-language explanation of this same output** —
+the two are not the same thing and the engine does not call any LLM.
+
+**Why persona-aware without persona branching.** `RecommendationFactor`
+(e.g. `HIGH_TEMPERATURE`, `HIGH_UV`) maps to a `WeatherPriority` via
+`FACTOR_PRIORITY` (`packages/shared/src/recommendation.ts`). The engine
+checks `context.weatherPriorities.includes(FACTOR_PRIORITY[factor])` — a
+factor only produces a recommendation for personas whose
+`PersonaConfig.weatherPriorities` (§11) includes that factor's priority.
+This is why the same weather input yields different recommendations for
+different personas without an `if (persona === 'runner')` branch: the
+persona/priority linkage that already existed from Phase 4 does the
+filtering.
+
+**Thresholds are centralized and easy to tune**
+(`recommendation.thresholds.ts`) — e.g. `HIGH_TEMPERATURE_C: 32`,
+`HIGH_RAIN_PROBABILITY_PERCENT: 60`. These are prototype values, not
+scientifically validated; change them directly rather than adding
+scattered magic numbers elsewhere.
+
+**Persona-flavored copy is data, not branching logic**
+(`PERSONA_FACTOR_TEMPLATES` in `recommendation.rules.ts`) — a
+`Partial<Record<Persona, Partial<Record<RecommendationFactor, ...>>>>`
+map. A missing `(persona, factor)` entry falls back to
+`GENERIC_FACTOR_TEMPLATES`, so every persona × factor combination
+produces a reasonable result even before bespoke wording is added for
+it.
+
+**No false precision.** Wording throughout uses "high rain probability" /
+"consider leaving earlier" rather than claiming certainty ("it will
+rain") or fabricated specificity ("leave in 20 minutes") — the engine has
+no route/journey data, so it deliberately doesn't pretend to.
+
+**Ranking.** When multiple factors are relevant, recommendations are
+sorted by `priority` (`severe` > `high` > `medium` > `low`); the first
+becomes `primaryRecommendation`, the rest are `recommendations[1:]`. No
+numeric risk score is used — the spec explicitly allows skipping one when
+it would add complexity without benefit for a prototype, and priority
+ordering alone was sufficient here.
+
+**Boundaries respected.** `RecommendationService`/`generateRecommendations`
+never import from `modules/weather`, `integrations/weather`, or
+`modules/personalization`'s service (only a persona-existence check via
+`isValidPersona`, for input validation — not weather/context creation).
+Weather fetching and `UserContext` creation are the caller's
+responsibility (mobile currently does this by calling
+`personalizationService` and passing manually-entered weather values on
+the `/dev/recommendations` screen — a real screen would call
+`weatherService` too).
+
+**Future Journey support.** The spec calls for a `RecommendationFactor`/
+`Recommendation` design that a future Journey Weather Engine could extend
+with fields like `routeRainRisk` or `recommendedDepartureTime` — those
+fields are **not implemented now** (no journey data exists yet to
+populate them honestly). Nothing here would need restructuring to add
+them: `RecommendationInput`/`RecommendationResult` are plain shared
+interfaces that can gain optional fields later without breaking existing
+callers.
+
+## 14. Recommendation Engine Testing
+
+Backend unit tests — 41 new tests, deterministic, no network:
+
+- `modules/recommendations/recommendation.rules.test.ts` (10) —
+  `evaluateFactors` for favorable/hot/rainy/high-UV/windy/severe/poor-air-quality
+  weather; `buildRecommendation` persona-specific vs. generic fallback
+  wording.
+- `modules/recommendations/recommendation.engine.test.ts` (10) —
+  favorable conditions, high temperature, high humidity (present for
+  runner, absent for commuter), high UV, high rain probability (RESCHEDULE
+  for runner, CAUTION for commuter), high wind, combined-risk weather
+  (multiple factors, correctly priority-sorted), and persona differences
+  (same weather → different primary recommendation/title; a factor
+  outside a persona's `weatherPriorities` never appears).
+- `modules/recommendations/recommendation.service.test.ts` (8) — valid
+  input, missing/invalid context, missing weather, invalid
+  temperature/humidity/UV/precipitation/rainProbability (out-of-range or
+  wrong type) all rejected with a normalized `RecommendationError`.
+- `routes/recommendations.test.ts` (4) — supertest against the real
+  Express `app` for `POST /api/recommendations`: valid request, invalid
+  context, invalid weather, missing fields.
+
+Mobile unit tests — 3 tests
+(`services/recommendations/recommendationsService.test.ts`): calls the
+CLOUD6 backend, normalizes backend error responses and network failures
+into `RecommendationError`, against a mocked `fetch` — confirms the
+mobile service contains no recommendation rules of its own.
+
+Fixtures: `apps/server/test/fixtures/cloud6/recommendation.ts` — small,
+named weather fixtures (favorable/hot/rainy/high-UV/windy/severe/combined-risk)
+and a `makeUserContext()` builder, reused across all three backend test
+files rather than duplicating literals.
+
+**Live verification:** the running dev server's `POST /api/recommendations`
+was hit directly with the same hot+rainy weather for both a runner
+context and a commuter context — the runner got `RESCHEDULE`/"Rain likely
+during your run" as primary, the commuter got `CAUTION`/"Rain likely
+during your commute" as primary, confirming persona-aware behavior end to
+end (not just in mocked tests). Favorable weather and invalid-input
+(bad persona, missing body) cases were also verified live.
+
+### `/dev/recommendations` developer screen
+
+`apps/mobile/app/dev/recommendations.tsx` is a temporary, intentionally
+basic screen (marked "DEVELOPMENT / TESTING ONLY") with a persona picker
+(from the shared `PERSONAS` enumeration), manual weather-value inputs,
+and a "Generate Recommendation" button that calls
+`personalizationService.createUserContext()` then
+`recommendationsService.generate()` — no recommendation logic lives in
+the component. Displays the primary recommendation (title, message,
+action, priority, reasons) and any additional recommendations. Verified
+to bundle successfully (`npx expo export --platform web`); not
+click-tested in a running simulator/browser in this environment.

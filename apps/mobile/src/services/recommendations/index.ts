@@ -1,0 +1,1 @@
+export { recommendationsService } from './recommendationsService';

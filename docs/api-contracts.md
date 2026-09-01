@@ -1,9 +1,9 @@
 # CLOUD6 API Contracts
 
-Status: **Phase 4 — Personalization**. Only the endpoints below exist.
-Future endpoints (location, journey, recommendations, alerts, users) will
-be documented here as each module is implemented — they are
-intentionally not speculated on yet.
+Status: **Phase 5 — Recommendation Engine**. Only the endpoints below
+exist. Future endpoints (location, journey, alerts, users) will be
+documented here as each module is implemented — they are intentionally
+not speculated on yet.
 
 ## `GET /health`
 
@@ -203,3 +203,90 @@ recommendations — see `architecture.md` §11.
 ```
 
 `code` is one of `PERSONA_INVALID`, `TIME_INVALID`, `ACTIVITY_INVALID`.
+
+## Recommendations
+
+### `POST /api/recommendations`
+
+Deterministic, rule-based recommendations from a `UserContext` +
+`CurrentWeather` — no weather fetching happens inside this endpoint (pass
+in weather already fetched via `/api/weather/current`) and no AI/LLM is
+involved. See `architecture.md` §13.
+
+**Request body**
+
+```json
+{
+  "context": {
+    "persona": "runner",
+    "activities": ["running"],
+    "preferredTimeOfDay": "morning",
+    "weatherPriorities": [
+      "temperature",
+      "feels_like",
+      "humidity",
+      "precipitation",
+      "rain_probability",
+      "wind",
+      "uv"
+    ]
+  },
+  "weather": {
+    "temperature": 34,
+    "feelsLike": 38,
+    "humidity": 85,
+    "precipitation": 8,
+    "rainProbability": 85,
+    "windSpeed": 15,
+    "windDirection": 180,
+    "uvIndex": 9,
+    "visibility": 8,
+    "weatherCode": "rain",
+    "timestamp": "2026-09-01T12:00"
+  }
+}
+```
+
+`context` is normally the output of `POST /api/personalization/context`;
+`weather` is normally the `current` object from
+`GET /api/weather/current`.
+
+**Response — 200 OK**
+
+```json
+{
+  "primaryRecommendation": {
+    "type": "RESCHEDULE",
+    "priority": "high",
+    "title": "Rain likely during your run",
+    "message": "Rain is likely during your planned activity.",
+    "action": "Consider rescheduling your run.",
+    "reasons": ["VERY_HIGH_RAIN_PROBABILITY"]
+  },
+  "recommendations": [
+    { "type": "RESCHEDULE", "priority": "high", "...": "..." },
+    { "type": "CAUTION", "priority": "medium", "...": "..." }
+  ],
+  "evaluatedFactors": [
+    "HIGH_TEMPERATURE",
+    "HIGH_FEELS_LIKE",
+    "HIGH_HUMIDITY",
+    "HIGH_UV",
+    "VERY_HIGH_RAIN_PROBABILITY"
+  ]
+}
+```
+
+`recommendations` is sorted by priority (`severe` > `high` > `medium` >
+`low`); `primaryRecommendation` is `recommendations[0]` (or `null` if
+somehow empty, which shouldn't happen — a `FAVORABLE` result is always
+produced when no risk factors are relevant).
+
+**Response — 400 Bad Request**
+
+```json
+{ "error": { "code": "RECOMMENDATION_INVALID_CONTEXT", "message": "Unknown persona: astronaut" } }
+```
+
+`code` is one of `RECOMMENDATION_INVALID_CONTEXT`,
+`RECOMMENDATION_INVALID_WEATHER`.

@@ -44,7 +44,24 @@ to the next phase.
   missing body). The mobile `/dev/persona` screen bundles successfully
   but was not click-tested in a running simulator/browser in this
   environment.
-- **Phase 5 — Recommendation Engine** — ⏳ NOT IMPLEMENTED
+- **Phase 5 — Recommendation Engine** — ✅ IMPLEMENTED, UNIT-TESTED, LIVE-VERIFIED — ⏳ mobile UI click-testing pending
+  Deterministic, rule-based `RecommendationService`/`generateRecommendations`
+  (`modules/recommendations`) — converts `CurrentWeather` + `UserContext`
+  into a priority-sorted `Recommendation[]`, filtered by persona relevance
+  via `context.weatherPriorities` (no AI/LLM involved; see
+  `architecture.md` §13). Centralized thresholds
+  (`recommendation.thresholds.ts`), persona-flavored copy as data
+  (`PERSONA_FACTOR_TEMPLATES`), `POST /api/recommendations`, mobile
+  `recommendationsService` (backend-only, no rules), `/dev/recommendations`
+  developer test screen. 41 backend + 3 mobile unit tests pass, all mocked
+  (see `architecture.md` §14). Manually verified against the live
+  backend: identical hot+rainy weather produced a `RESCHEDULE` "Rain
+  likely during your run" for a runner and a `CAUTION` "Rain likely
+  during your commute" for a commuter — confirming persona-aware behavior
+  end to end. Favorable weather and invalid-input cases also verified
+  live. The mobile `/dev/recommendations` screen bundles successfully but
+  was not click-tested in a running simulator/browser in this
+  environment.
 - **Phase 6 — Basic Mobile Experience** — ⏳ NOT IMPLEMENTED
 - **Phase 7 — Maps & Routing** — ⏳ NOT IMPLEMENTED
 - **Phase 8 — Route Sampling** — ⏳ NOT IMPLEMENTED
@@ -56,4 +73,4 @@ to the next phase.
 - **Phase 14 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 15 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
 
-Do not assume any phase beyond Phase 4 is complete.
+Do not assume any phase beyond Phase 5 is complete.
