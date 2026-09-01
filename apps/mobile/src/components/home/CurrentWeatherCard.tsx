@@ -13,21 +13,23 @@ interface CurrentWeatherCardProps {
 /** The primary, visually dominant Home card: temperature, condition, feels-like, humidity. */
 export function CurrentWeatherCard({ weather, error, loading }: CurrentWeatherCardProps) {
   return (
-    <Card tone="blue" style={styles.card}>
+    <Card style={styles.card}>
       <Text style={typography.sectionTitle}>CURRENT WEATHER</Text>
 
       {weather && (
         <>
           <View style={styles.mainRow}>
             <View>
-              <Text style={typography.temperature}>{Math.round(weather.temperature)}°</Text>
+              <Text style={typography.hero}>{Math.round(weather.temperature)}°</Text>
               <Text style={styles.condition}>{weatherLabel(weather.weatherCode)}</Text>
             </View>
-            <Text style={styles.icon}>{weatherIcon(weather.weatherCode)}</Text>
+            <View style={styles.iconWrap}>
+              <Text style={styles.icon}>{weatherIcon(weather.weatherCode)}</Text>
+            </View>
           </View>
           <View style={styles.pillRow}>
-            <Pill label={`Feels like ${Math.round(weather.feelsLike)}°`} tone="surface" />
-            <Pill label={`Humidity ${weather.humidity}%`} tone="surface" />
+            <Pill label={`Feels like ${Math.round(weather.feelsLike)}°`} />
+            <Pill label={`Humidity ${weather.humidity}%`} />
           </View>
         </>
       )}
@@ -51,11 +53,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   condition: {
-    ...typography.cardTitle,
+    ...typography.label,
     marginTop: spacing.xs,
   },
+  iconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   icon: {
-    fontSize: 56,
+    fontSize: 26,
   },
   pillRow: {
     flexDirection: 'row',

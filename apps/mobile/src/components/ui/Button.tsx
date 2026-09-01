@@ -43,10 +43,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   primary: {
-    backgroundColor: colors.primaryCta,
+    backgroundColor: colors.primary,
   },
   secondary: {
-    backgroundColor: colors.softBlue,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   primaryText: {
     color: colors.textInverse,
@@ -55,7 +57,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   disabled: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
   pressed: {
     opacity: 0.85,

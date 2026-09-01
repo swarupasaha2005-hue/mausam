@@ -1,6 +1,6 @@
 import { usePathname, useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, typography } from '../../theme';
+import { colors, radius, spacing } from '../../theme';
 
 interface NavItem {
   label: string;
@@ -9,74 +9,79 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Home', icon: '🏠', href: '/' },
-  { label: 'Journey', icon: '🧭', href: '/journey' },
-  { label: 'Weather', icon: '🌤️', href: '/weather' },
-  { label: 'Profile', icon: '🙂', href: '/profile' },
+  { label: 'Home', icon: '⌂', href: '/' },
+  { label: 'Journey', icon: '↗', href: '/journey' },
+  { label: 'Weather', icon: '☁', href: '/weather' },
+  { label: 'Profile', icon: '◉', href: '/profile' },
 ];
 
-/** Bottom navigation shared across top-level screens. Only routes to screens that exist. */
+/** Floating, dark, pill-shaped bottom navigation. Only routes to screens that exist. */
 export function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
 
   return (
-    <View style={styles.bar}>
-      {NAV_ITEMS.map((item) => {
-        const active = pathname === item.href;
-        return (
-          <Pressable
-            key={item.href}
-            onPress={() => router.push(item.href)}
-            style={styles.item}
-            accessibilityLabel={item.label}
-          >
-            <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
-              <Text style={styles.icon}>{item.icon}</Text>
-            </View>
-            <Text style={[typography.meta, active && styles.labelActive]}>{item.label}</Text>
-          </Pressable>
-        );
-      })}
+    <View style={styles.wrap}>
+      <View style={styles.bar}>
+        {NAV_ITEMS.map((item) => {
+          const active = pathname === item.href;
+          return (
+            <Pressable
+              key={item.href}
+              onPress={() => router.push(item.href)}
+              style={[styles.item, active && styles.itemActive]}
+              accessibilityLabel={`${item.label} tab`}
+            >
+              <Text style={[styles.icon, active && styles.iconActive]}>{item.icon}</Text>
+              {active && <Text style={styles.label}>{item.label}</Text>}
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.md,
+  },
   bar: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -2 },
-    elevation: 4,
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
   item: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-  },
-  iconWrap: {
-    width: 36,
-    height: 36,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  iconWrapActive: {
-    backgroundColor: colors.softBlue,
+  itemActive: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   icon: {
     fontSize: 17,
+    color: 'rgba(255,255,255,0.55)',
   },
-  labelActive: {
-    color: colors.textPrimary,
-    fontWeight: '700',
+  iconActive: {
+    color: colors.textInverse,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textInverse,
   },
 });

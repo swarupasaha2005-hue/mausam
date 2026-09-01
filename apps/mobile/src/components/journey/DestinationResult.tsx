@@ -31,10 +31,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.sm,
+    borderRadius: radius.small,
   },
   pressed: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surfaceSecondary,
   },
   pin: {
     fontSize: 15,

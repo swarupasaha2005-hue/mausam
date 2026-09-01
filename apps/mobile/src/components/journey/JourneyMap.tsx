@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import type { GeoPoint } from '@cloud6/shared';
 import { MapView } from '../map';
-import { radius } from '../../theme';
+import { colors, radius } from '../../theme';
 
 interface JourneyMapProps {
   start: GeoPoint | null;
@@ -21,7 +21,9 @@ export function JourneyMap({ start, destination, routeCoordinates }: JourneyMapP
 const styles = StyleSheet.create({
   wrap: {
     height: 220,
-    borderRadius: radius.lg,
+    borderRadius: radius.large,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     overflow: 'hidden',
   },
 });

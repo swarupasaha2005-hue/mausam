@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LocationError, type GeoPoint } from '@cloud6/shared';
 import { geocodingService } from '../../services/location';
+import { InputField } from '../ui';
 import { colors, radius, spacing, typography } from '../../theme';
 import { DestinationResult } from './DestinationResult';
 
@@ -75,10 +76,9 @@ export function DestinationSearch({ onSelect }: DestinationSearchProps) {
   }
 
   return (
-    <View>
+    <View style={styles.group}>
       <Text style={typography.sectionTitle}>TO</Text>
-      <View style={styles.inputRow}>
-        <Text style={styles.icon}>🔎</Text>
+      <InputField icon={<Text style={styles.icon}>🔎</Text>}>
         <TextInput
           style={styles.input}
           value={selected ? selected.label : query}
@@ -87,12 +87,12 @@ export function DestinationSearch({ onSelect }: DestinationSearchProps) {
             setQuery(text);
           }}
           placeholder="Where are you headed?"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={colors.textTertiary}
           onSubmitEditing={runSearch}
           returnKeyType="search"
         />
         {status === 'searching' && <ActivityIndicator size="small" color={colors.textSecondary} />}
-      </View>
+      </InputField>
       {selected?.sublabel && <Text style={styles.selectedSublabel}>{selected.sublabel}</Text>}
 
       {status === 'success' && results.length > 0 && (
@@ -116,15 +116,8 @@ export function DestinationSearch({ onSelect }: DestinationSearchProps) {
 }
 
 const styles = StyleSheet.create({
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  group: {
     gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.sm,
   },
   icon: {
     fontSize: 16,
@@ -135,13 +128,13 @@ const styles = StyleSheet.create({
   },
   selectedSublabel: {
     ...typography.meta,
-    marginTop: spacing.xs,
     marginLeft: spacing.lg,
   },
   resultsCard: {
-    marginTop: spacing.sm,
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radius.medium,
     paddingVertical: spacing.sm,
   },
   resultsTitle: {

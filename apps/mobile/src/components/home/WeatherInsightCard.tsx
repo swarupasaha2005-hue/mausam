@@ -26,9 +26,11 @@ const TYPE_ICON: Record<Recommendation['type'], string> = {
 export function WeatherInsightCard({ recommendation, error, loading }: WeatherInsightCardProps) {
   if (recommendation) {
     return (
-      <Card tone="mint">
+      <Card>
         <View style={styles.titleRow}>
-          <Text style={styles.icon}>{TYPE_ICON[recommendation.type]}</Text>
+          <View style={styles.iconWrap}>
+            <Text style={styles.icon}>{TYPE_ICON[recommendation.type]}</Text>
+          </View>
           <Text style={typography.cardTitle}>{recommendation.title}</Text>
         </View>
         <Text style={styles.message}>{recommendation.message}</Text>
@@ -37,9 +39,11 @@ export function WeatherInsightCard({ recommendation, error, loading }: WeatherIn
   }
 
   return (
-    <Card tone="mint">
+    <Card>
       <View style={styles.titleRow}>
-        <Text style={styles.icon}>💭</Text>
+        <View style={styles.iconWrap}>
+          <Text style={styles.icon}>💭</Text>
+        </View>
         <Text style={typography.cardTitle}>
           {loading ? 'Preparing your insight…' : 'No insight available right now'}
         </Text>
@@ -59,10 +63,18 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   icon: {
-    fontSize: 22,
+    fontSize: 16,
   },
   message: {
     ...typography.bodySecondary,

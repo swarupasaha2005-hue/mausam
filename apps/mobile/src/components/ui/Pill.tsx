@@ -6,7 +6,7 @@ interface PillProps {
   tone?: 'neutral' | 'surface';
 }
 
-/** Small rounded pill for a single piece of metadata (e.g. "Feels like 34°"). */
+/** Minimal, compact metadata pill — a subtle border, not a filled color block. */
 export function Pill({ label, tone = 'neutral' }: PillProps) {
   return (
     <View style={[styles.pill, tone === 'surface' && styles.surface]}>
@@ -20,9 +20,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surfaceSecondary,
   },
   surface: {
     backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
 });

@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, typography } from '../../theme';
+import { InputField } from '../ui';
+import { colors, spacing, typography } from '../../theme';
 
 interface LocationFieldProps {
   label: string;
@@ -9,36 +10,26 @@ interface LocationFieldProps {
   onRetry?: () => void;
 }
 
-/** Read-only "From" field sourced from the existing location system. */
+/** Read-only "From" field sourced from the existing location system — shares InputField's shell. */
 export function LocationField({ label, value, unavailableText, loading, onRetry }: LocationFieldProps) {
   return (
-    <View>
+    <View style={styles.group}>
       <Text style={typography.sectionTitle}>{label}</Text>
-      <View style={styles.row}>
-        <Text style={styles.icon}>📍</Text>
-        <Text style={styles.value}>
-          {loading ? 'Locating…' : (value ?? unavailableText)}
-        </Text>
+      <InputField icon={<Text style={styles.icon}>📍</Text>}>
+        <Text style={styles.value}>{loading ? 'Locating…' : (value ?? unavailableText)}</Text>
         {!loading && !value && onRetry && (
           <Pressable onPress={onRetry} hitSlop={8}>
             <Text style={styles.retry}>Retry</Text>
           </Pressable>
         )}
-      </View>
+      </InputField>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  group: {
     gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.sm,
   },
   icon: {
     fontSize: 16,
@@ -48,8 +39,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   retry: {
-    ...typography.meta,
+    ...typography.label,
     color: colors.textPrimary,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 });

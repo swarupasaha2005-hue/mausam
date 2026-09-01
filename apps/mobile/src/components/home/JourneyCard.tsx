@@ -13,7 +13,7 @@ interface JourneyCardProps {
  */
 export function JourneyCard({ onPlanJourney }: JourneyCardProps) {
   return (
-    <Card tone="lavender">
+    <Card>
       <Text style={typography.sectionTitle}>PLAN A JOURNEY</Text>
       <Text style={styles.title}>See the weather along your route</Text>
       <Text style={styles.body}>

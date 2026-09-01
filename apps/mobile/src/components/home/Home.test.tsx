@@ -197,10 +197,10 @@ describe('Home screen', () => {
   it('renders the bottom navigation', () => {
     mockedUsePersonalizedWeather.mockReturnValue(emptyHookResult());
     const root = renderJson();
-    expect(textContains(root, 'Home')).toBe(true);
-    expect(textContains(root, 'Journey')).toBe(true);
-    expect(textContains(root, 'Weather')).toBe(true);
-    expect(textContains(root, 'Profile')).toBe(true);
+    expect(() => root.root.findByProps({ accessibilityLabel: 'Home tab' })).not.toThrow();
+    expect(() => root.root.findByProps({ accessibilityLabel: 'Journey tab' })).not.toThrow();
+    expect(() => root.root.findByProps({ accessibilityLabel: 'Weather tab' })).not.toThrow();
+    expect(() => root.root.findByProps({ accessibilityLabel: 'Profile tab' })).not.toThrow();
   });
 
   it('handles missing location/weather gracefully', () => {

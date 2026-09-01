@@ -13,7 +13,7 @@ export function JourneyHeader({ title, onBack }: JourneyHeaderProps) {
       <Pressable onPress={onBack} style={styles.backButton} accessibilityLabel="Back">
         <Text style={styles.backIcon}>←</Text>
       </Pressable>
-      <Text style={typography.cardTitle}>{title}</Text>
+      <Text style={typography.screenTitle}>{title}</Text>
     </View>
   );
 }
@@ -29,6 +29,8 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
