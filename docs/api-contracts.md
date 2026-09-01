@@ -1,6 +1,6 @@
 # CLOUD6 API Contracts
 
-Status: **Phase 9 — Journey Weather Intelligence**. Only the endpoints
+Status: **Phase 10 — Journey Risk + Actionable Intelligence**. Only the endpoints
 below exist. Future endpoints (alerts, users) will be documented here as
 each module is implemented — they are intentionally not speculated on
 yet.
@@ -507,3 +507,78 @@ observed under live load, not a hypothetical — see `architecture.md`
 ```
 
 `code` is one of `JOURNEY_INVALID_ROUTE`, `JOURNEY_INVALID_DEPARTURE_TIME`.
+
+### `POST /api/journey/intelligence`
+
+Produces a deterministic, rule-based risk analysis and persona-aware
+recommendation from an existing `JourneyWeatherPlan` and `UserContext`.
+Does not call the routing or weather providers, does not resample the
+route, and does not re-enrich checkpoints — pass in the outputs of
+`POST /api/journey/weather` (Phase 9) and
+`POST /api/personalization/context` (Phase 4). No AI/LLM is involved. See
+`architecture.md` §23.
+
+**Request body**
+
+```json
+{
+  "journeyWeatherPlan": {
+    "route": { "...": "..." },
+    "departureTime": "2026-09-01T16:00:00.000Z",
+    "estimatedArrivalTime": "2026-09-01T16:18:01.200Z",
+    "durationMinutes": 18.02,
+    "checkpoints": [{ "...": "..." }],
+    "summary": { "...": "..." }
+  },
+  "userContext": {
+    "persona": "runner",
+    "activities": ["running"],
+    "preferredTimeOfDay": "morning",
+    "weatherPriorities": ["temperature", "rain_probability", "..."]
+  }
+}
+```
+
+**Response — 200 OK**
+
+```json
+{
+  "journeyWeatherPlan": { "...": "..." },
+  "analysis": {
+    "riskLevel": "medium",
+    "primaryConcern": "Rain probability is elevated during part of your journey.",
+    "factors": ["RAIN_DURING_JOURNEY"],
+    "affectedCheckpointSequences": [2],
+    "affectedSegment": { "fromDistanceKm": 1.8, "toDistanceKm": 1.8 },
+    "firstAffectedCheckpointSequence": 2,
+    "transitions": [],
+    "weatherAvailableCheckpoints": 5,
+    "weatherUnavailableCheckpoints": 3,
+    "confidence": "medium",
+    "reasons": ["Rain probability is elevated during part of your journey. (checkpoint 2, 1.8 km)."]
+  },
+  "recommendation": {
+    "type": "CAUTION",
+    "priority": "medium",
+    "title": "Rain expected during part of your run",
+    "message": "Rain probability is elevated during part of your journey.",
+    "action": "Carry rain protection or plan an alternate window.",
+    "reasons": ["RAIN_DURING_JOURNEY"]
+  }
+}
+```
+
+Identical `journeyWeatherPlan`, `analysis.riskLevel`, `analysis.factors`,
+and `analysis.affectedCheckpointSequences` are produced for every
+persona — only `recommendation` (and which factors are considered
+relevant) changes with persona. See the live verification in
+`architecture.md` §24 for a real runner-vs-commuter comparison.
+
+**Response — 400 Bad Request**
+
+```json
+{ "error": { "code": "JOURNEY_INVALID_ROUTE", "message": "Unknown persona: astronaut" } }
+```
+
+`code` is one of `JOURNEY_INVALID_ROUTE`,
+`JOURNEY_INVALID_DEPARTURE_TIME`, `JOURNEY_INVALID_OPTIONS`.

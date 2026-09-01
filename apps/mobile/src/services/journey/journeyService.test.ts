@@ -108,3 +108,77 @@ describe('journeyService.getJourneyWeather', () => {
     );
   });
 });
+
+const USER_CONTEXT = {
+  persona: 'runner' as const,
+  activities: ['running' as const],
+  preferredTimeOfDay: 'flexible' as const,
+  weatherPriorities: ['temperature' as const],
+};
+
+describe('journeyService.getJourneyIntelligence', () => {
+  it('calls the CLOUD6 backend (/api/journey/intelligence), not Open-Meteo', async () => {
+    const journeyWeatherPlan = {
+      ...JOURNEY_PLAN,
+      summary: {
+        weatherAvailableCheckpoints: 0,
+        weatherUnavailableCheckpoints: 0,
+        rainAffectedCheckpointCount: 0,
+        firstRainCheckpointSequence: null,
+        transitions: [],
+      },
+    };
+    const intelligence = {
+      journeyWeatherPlan,
+      analysis: {
+        riskLevel: 'low',
+        primaryConcern: 'Conditions look favorable along your entire route.',
+        factors: ['FAVORABLE_JOURNEY'],
+        affectedCheckpointSequences: [],
+        affectedSegment: null,
+        firstAffectedCheckpointSequence: null,
+        transitions: [],
+        weatherAvailableCheckpoints: 0,
+        weatherUnavailableCheckpoints: 0,
+        confidence: 'low',
+        reasons: [],
+      },
+      recommendation: {
+        type: 'FAVORABLE',
+        priority: 'low',
+        title: 'Good conditions for your run',
+        message: 'Conditions look favorable for your entire route.',
+        action: 'Enjoy your run.',
+        reasons: ['FAVORABLE_JOURNEY'],
+      },
+    };
+    mockFetch(() => new Response(JSON.stringify(intelligence), { status: 200 }));
+
+    const result = await journeyService.getJourneyIntelligence(journeyWeatherPlan, USER_CONTEXT);
+
+    expect(result).toEqual(intelligence);
+    const [url, init] = (globalThis.fetch as jest.Mock).mock.calls[0];
+    expect(url).toContain('/api/journey/intelligence');
+    expect(url).not.toContain('open-meteo.com');
+    expect(JSON.parse(init.body)).toEqual({ journeyWeatherPlan, userContext: USER_CONTEXT });
+  });
+
+  it('normalizes a backend error response into a JourneyError', async () => {
+    mockFetch(
+      () =>
+        new Response(JSON.stringify({ error: { code: 'JOURNEY_INVALID_ROUTE' } }), { status: 400 }),
+    );
+
+    await expect(
+      journeyService.getJourneyIntelligence(JOURNEY_PLAN as never, USER_CONTEXT),
+    ).rejects.toBeInstanceOf(JourneyError);
+  });
+
+  it('normalizes a network failure', async () => {
+    mockFetch(() => Promise.reject(new Error('Network request failed')));
+
+    await expect(
+      journeyService.getJourneyIntelligence(JOURNEY_PLAN as never, USER_CONTEXT),
+    ).rejects.toBeInstanceOf(JourneyError);
+  });
+});

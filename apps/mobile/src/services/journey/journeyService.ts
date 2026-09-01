@@ -1,10 +1,12 @@
 import {
   JourneyError,
   type JourneyErrorCode,
+  type JourneyIntelligence,
   type JourneyPlan,
   type JourneyWeatherPlan,
   type Route,
   type SampleRouteOptions,
+  type UserContext,
 } from '@cloud6/shared';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
@@ -46,9 +48,10 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 /**
  * Mobile-side journey client. Calls the CLOUD6 backend
- * (`/api/journey/plan`, `/api/journey/weather`) — route sampling,
- * timeline math, and weather enrichment all stay on the backend; this
- * file contains none of that logic and never calls Open-Meteo.
+ * (`/api/journey/plan`, `/api/journey/weather`, `/api/journey/intelligence`)
+ * — route sampling, timeline math, weather enrichment, and journey risk/
+ * recommendation rules all stay on the backend; this file contains none
+ * of that logic and never calls Open-Meteo.
  */
 export const journeyService = {
   planJourney(
@@ -61,5 +64,15 @@ export const journeyService = {
 
   getJourneyWeather(journeyPlan: JourneyPlan): Promise<JourneyWeatherPlan> {
     return postJson<JourneyWeatherPlan>('/api/journey/weather', { journeyPlan });
+  },
+
+  getJourneyIntelligence(
+    journeyWeatherPlan: JourneyWeatherPlan,
+    userContext: UserContext,
+  ): Promise<JourneyIntelligence> {
+    return postJson<JourneyIntelligence>('/api/journey/intelligence', {
+      journeyWeatherPlan,
+      userContext,
+    });
   },
 };

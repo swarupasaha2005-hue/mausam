@@ -49,3 +49,12 @@ export type {
   JourneyWeatherSummary,
   JourneyWeatherPlan,
 } from './journey-weather';
+export type {
+  JourneyFactor,
+  JourneyRiskLevel,
+  JourneyAnalysisConfidence,
+  JourneyAffectedSegment,
+  JourneyAnalysis,
+  JourneyRecommendation,
+  JourneyIntelligence,
+} from './journey-analysis';

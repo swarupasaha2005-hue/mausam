@@ -160,11 +160,53 @@ to the next phase.
   `npx expo export --platform web` bundled successfully. "Analyze
   Journey Weather" and the resulting display were not click-tested in a
   running simulator/browser in this environment.
-- **Phase 10 — Journey Risk Engine** — ⏳ NOT IMPLEMENTED
+- **Phase 10 — Journey Risk + Actionable Intelligence** — ✅ IMPLEMENTED, UNIT-TESTED, LIVE-VERIFIED — ⏳ mobile UI click-testing pending
+  Deterministic, rule-based journey-level risk analysis
+  (`modules/journey/journey.analysis*`) built on top of Phase 9's
+  `JourneyWeatherPlan` — never refetches weather, never resamples the
+  route, never recalculates the timeline. `evaluateCheckpointFactors()`
+  reuses Phase 5's `THRESHOLDS`/`SEVERE_WEATHER_CODES` (not duplicated);
+  `analyzeJourney()` derives per-checkpoint and journey-level
+  (`WEATHER_DETERIORATION`, `SEVERE_WEATHER_NEAR_DESTINATION`,
+  `FAVORABLE_JOURNEY`) factors, filters them by persona relevance via
+  `context.weatherPriorities` (same pattern as Phase 5), and produces a
+  `JourneyAnalysis` (risk level, primary concern, affected segment,
+  confidence, human-readable reasons). `buildJourneyRecommendation()`
+  mirrors Phase 5's persona-flavored-template pattern
+  (`PERSONA_FACTOR_TEMPLATES`/`GENERIC_FACTOR_TEMPLATES`) to produce a
+  `JourneyRecommendation`. Missing weather at a checkpoint is never
+  treated as bad weather; if no checkpoint has weather at all, the result
+  says so honestly instead of fabricating a risk level. `POST
+/api/journey/intelligence`, shared `JourneyFactor`/`JourneyAnalysis`/
+  `JourneyRecommendation`/`JourneyIntelligence` models (reusing
+  `RecommendationType`/`RecommendationPriority` rather than duplicating
+  them), mobile `journeyService.getJourneyIntelligence()`, `useJourney()`
+  extended with `analyzeJourney()`/`setPersona()`/`setPreferredTimeOfDay()`
+  (persona changes never refetch location/route/weather — only
+  re-runs analysis against the already-fetched `JourneyWeatherPlan`),
+  `/dev/journey` extended with a Persona picker and a Journey Intelligence
+  section (risk, primary concern, affected area, reasons, recommendation).
+  See `architecture.md` §23. Backend and mobile unit tests pass,
+  deterministic (§24). **Live-verified**: a real 370-coordinate OSRM
+  route → 8-checkpoint `JourneyPlan` → `JourneyWeatherPlan` (5 of 8
+  checkpoints with real weather, 3 timed out — matching Phase 9's known
+  rate-limit behavior) was run through `POST /api/journey/intelligence`
+  twice with real `UserContext` objects for `runner` and `commuter`: both
+  produced identical `riskLevel`/`factors`/`affectedCheckpointSequences`
+  but different `recommendation.title`/`recommendation.action` text —
+  confirming "objective weather, subjective interpretation" live, not just
+  in mocks. Missing weather at 3 checkpoints was correctly never treated
+  as bad weather (`confidence: 'medium'`, no fabricated factors). An
+  invalid journey plan and an invalid persona both correctly returned 400.
+  `npx expo export --platform web` bundled successfully. Departure-time
+  optimization was explicitly **not implemented** (left as an honest
+  scope limit — see `architecture.md` §23) rather than faked. The
+  Persona picker and Journey Intelligence section were not click-tested in
+  a running simulator/browser in this environment.
 - **Phase 11 — Departure Time Optimization** — ⏳ NOT IMPLEMENTED
 - **Phase 12 — AI Explanation Layer** — ⏳ NOT IMPLEMENTED
 - **Phase 13 — Contextual Alerts** — ⏳ NOT IMPLEMENTED
 - **Phase 14 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 15 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
 
-Do not assume any phase beyond Phase 9 is complete.
+Do not assume any phase beyond Phase 10 is complete.

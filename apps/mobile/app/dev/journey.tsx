@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { PERSONAS, TIME_OF_DAY_OPTIONS } from '@cloud6/shared';
 import { useJourney } from '../../src/hooks/useJourney';
 import { MapView } from '../../src/components/map';
 
@@ -16,6 +17,9 @@ export default function JourneyTestScreen() {
     route,
     journeyPlan,
     journeyWeather,
+    journeyIntelligence,
+    persona,
+    preferredTimeOfDay,
     loading,
     error,
     loadStart,
@@ -23,6 +27,9 @@ export default function JourneyTestScreen() {
     getRoute,
     planTimeline,
     analyzeWeather,
+    analyzeJourney,
+    setPersona,
+    setPreferredTimeOfDay,
     refresh,
   } = useJourney();
   const [query, setQuery] = useState('');
@@ -155,6 +162,64 @@ export default function JourneyTestScreen() {
         )}
       </Section>
 
+      <Section title="PERSONA">
+        <View style={styles.buttonRow}>
+          {PERSONAS.map((option) => (
+            <View key={option} style={styles.buttonWrap}>
+              <Button
+                title={option}
+                onPress={() => setPersona(option)}
+                disabled={option === persona}
+              />
+            </View>
+          ))}
+        </View>
+        <View style={styles.buttonRow}>
+          {TIME_OF_DAY_OPTIONS.map((option) => (
+            <View key={option} style={styles.buttonWrap}>
+              <Button
+                title={option}
+                onPress={() => setPreferredTimeOfDay(option)}
+                disabled={option === preferredTimeOfDay}
+              />
+            </View>
+          ))}
+        </View>
+        <Text style={styles.value}>
+          Selected: {persona} / {preferredTimeOfDay}
+        </Text>
+      </Section>
+
+      <Section title="JOURNEY INTELLIGENCE">
+        <Button
+          title="Analyze Journey"
+          onPress={analyzeJourney}
+          disabled={loading || !journeyWeather}
+        />
+        {journeyIntelligence && (
+          <>
+            <Row label="Risk" value={journeyIntelligence.analysis.riskLevel.toUpperCase()} />
+            <Row label="Primary concern" value={journeyIntelligence.analysis.primaryConcern} />
+            {journeyIntelligence.analysis.affectedSegment && (
+              <Row
+                label="Affected area"
+                value={`${journeyIntelligence.analysis.affectedSegment.fromDistanceKm.toFixed(1)} km → ${journeyIntelligence.analysis.affectedSegment.toDistanceKm.toFixed(1)} km`}
+              />
+            )}
+            <Text style={styles.sectionTitle}>Why</Text>
+            {journeyIntelligence.analysis.reasons.map((reason, index) => (
+              <Text key={index} style={styles.value}>
+                • {reason}
+              </Text>
+            ))}
+            <Text style={styles.sectionTitle}>Recommendation</Text>
+            <Row label="Title" value={journeyIntelligence.recommendation.title} />
+            <Row label="Action" value={journeyIntelligence.recommendation.action} />
+            <Row label="Confidence" value={journeyIntelligence.analysis.confidence} />
+          </>
+        )}
+      </Section>
+
       <Section title="MAP">
         <MapView
           start={start}
@@ -270,5 +335,14 @@ const styles = StyleSheet.create({
   },
   error: {
     color: '#c0392b',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  buttonWrap: {
+    marginBottom: 4,
   },
 });

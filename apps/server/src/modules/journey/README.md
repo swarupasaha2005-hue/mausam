@@ -19,4 +19,18 @@ weather failure is preserved as `weather: null` +
 `journey.weather.summary.ts` derives a simple
 `weatherAvailableCheckpoints`/`rainAffectedCheckpointCount`/`transitions`
 overview — no risk scoring, no recommendations. Persona/UserContext is
-intentionally not involved here (a future phase).
+intentionally not involved here.
+
+Phase 10 status: Journey Risk + Actionable Intelligence implemented.
+`journey.analysis.service.ts` (`POST /api/journey/intelligence`) takes an
+existing `JourneyWeatherPlan` + `UserContext` and produces a
+`JourneyIntelligence` (deterministic risk level, explainable reasons, and
+a persona-flavored `JourneyRecommendation`) — no LLM, no new weather
+fetching, no route/timeline recalculation. `journey.analysis.rules.ts`
+reuses `modules/recommendations/recommendation.thresholds.ts` directly
+rather than duplicating threshold values.
+`journey.analysis.recommendation.ts` mirrors Phase 5's persona-template
+pattern but is a separate, journey-scoped model
+(`JourneyRecommendation`/`JourneyFactor`), since journey-level concepts
+(weather deterioration, affected segment) don't exist at Phase 5's
+single-moment scope.

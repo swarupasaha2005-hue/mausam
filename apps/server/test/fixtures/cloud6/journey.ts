@@ -3,6 +3,7 @@ import type {
   JourneyCheckpoint,
   JourneyPlan,
   JourneyWeatherCheckpoint,
+  JourneyWeatherPlan,
   Route,
 } from '@cloud6/shared';
 
@@ -113,4 +114,101 @@ export const journeyPlanFixture: JourneyPlan = {
       estimatedArrivalTime: '2026-09-01T16:30:00.000Z',
     }),
   ],
+};
+
+/**
+ * Mirrors the spec's worked example: clear at the start, deteriorating
+ * to rain and a mid-journey thunderstorm, then rain through to the end.
+ * 7 checkpoints, ~2km apart, 4:00 PM -> 4:18 PM.
+ */
+export const deterioratingJourneyWeatherPlanFixture: JourneyWeatherPlan = {
+  route: tenKmRouteFixture,
+  departureTime: '2026-09-01T16:00:00.000Z',
+  estimatedArrivalTime: '2026-09-01T16:18:00.000Z',
+  durationMinutes: 18,
+  checkpoints: [
+    makeWeatherCheckpoint({
+      sequence: 1,
+      distanceFromStartKm: 0,
+      estimatedArrivalTime: '2026-09-01T16:00:00.000Z',
+      weather: makeHourlyWeather({ weatherCode: 'clear', rainProbability: 5 }),
+    }),
+    makeWeatherCheckpoint({
+      sequence: 2,
+      distanceFromStartKm: 1.8,
+      estimatedArrivalTime: '2026-09-01T16:03:00.000Z',
+      weather: makeHourlyWeather({ weatherCode: 'partly_cloudy', rainProbability: 15 }),
+    }),
+    makeWeatherCheckpoint({
+      sequence: 3,
+      distanceFromStartKm: 3.6,
+      estimatedArrivalTime: '2026-09-01T16:06:00.000Z',
+      weather: makeHourlyWeather({ weatherCode: 'rain', rainProbability: 65 }),
+    }),
+    makeWeatherCheckpoint({
+      sequence: 4,
+      distanceFromStartKm: 5.4,
+      estimatedArrivalTime: '2026-09-01T16:09:00.000Z',
+      weather: makeHourlyWeather({ weatherCode: 'rain', rainProbability: 74 }),
+    }),
+    makeWeatherCheckpoint({
+      sequence: 5,
+      distanceFromStartKm: 7.2,
+      estimatedArrivalTime: '2026-09-01T16:12:00.000Z',
+      weather: makeHourlyWeather({ weatherCode: 'thunderstorm', rainProbability: 90 }),
+    }),
+    makeWeatherCheckpoint({
+      sequence: 6,
+      distanceFromStartKm: 9.0,
+      estimatedArrivalTime: '2026-09-01T16:15:00.000Z',
+      weather: makeHourlyWeather({ weatherCode: 'rain', rainProbability: 80 }),
+    }),
+    makeWeatherCheckpoint({
+      sequence: 7,
+      distanceFromStartKm: 10.8,
+      estimatedArrivalTime: '2026-09-01T16:18:00.000Z',
+      weather: makeHourlyWeather({ weatherCode: 'rain', rainProbability: 78 }),
+    }),
+  ],
+  summary: {
+    weatherAvailableCheckpoints: 7,
+    weatherUnavailableCheckpoints: 0,
+    rainAffectedCheckpointCount: 5,
+    firstRainCheckpointSequence: 3,
+    transitions: [
+      { fromSequence: 2, toSequence: 3, fromCondition: 'partly_cloudy', toCondition: 'rain' },
+      { fromSequence: 4, toSequence: 5, fromCondition: 'rain', toCondition: 'thunderstorm' },
+      { fromSequence: 5, toSequence: 6, fromCondition: 'thunderstorm', toCondition: 'rain' },
+    ],
+  },
+};
+
+/** All-favorable journey — clear, comfortable weather at every checkpoint. */
+export const favorableJourneyWeatherPlanFixture: JourneyWeatherPlan = {
+  route: tenKmRouteFixture,
+  departureTime: '2026-09-01T16:00:00.000Z',
+  estimatedArrivalTime: '2026-09-01T16:30:00.000Z',
+  durationMinutes: 30,
+  checkpoints: [
+    makeWeatherCheckpoint({ sequence: 1, distanceFromStartKm: 0, weather: makeHourlyWeather() }),
+    makeWeatherCheckpoint({
+      sequence: 2,
+      distanceFromStartKm: 5,
+      estimatedArrivalTime: '2026-09-01T16:15:00.000Z',
+      weather: makeHourlyWeather({ timestamp: '2026-09-01T16:15:00.000Z' }),
+    }),
+    makeWeatherCheckpoint({
+      sequence: 3,
+      distanceFromStartKm: 10,
+      estimatedArrivalTime: '2026-09-01T16:30:00.000Z',
+      weather: makeHourlyWeather({ timestamp: '2026-09-01T16:30:00.000Z' }),
+    }),
+  ],
+  summary: {
+    weatherAvailableCheckpoints: 3,
+    weatherUnavailableCheckpoints: 0,
+    rainAffectedCheckpointCount: 0,
+    firstRainCheckpointSequence: null,
+    transitions: [],
+  },
 };

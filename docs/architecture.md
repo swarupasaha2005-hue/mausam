@@ -1,6 +1,6 @@
 # CLOUD6 Architecture
 
-Status: **Phase 9 — Journey Weather Intelligence**. This document describes the architecture
+Status: **Phase 10 — Journey Risk + Actionable Intelligence**. This document describes the architecture
 established so far, and the intended shape of the system in later phases.
 It does not describe implemented product functionality — see
 `development-roadmap.md` for what is and isn't built yet.
@@ -1279,3 +1279,212 @@ invalid journey plan (missing `route`) correctly returned
 **Not performed:** interactive click-testing of "Analyze Journey
 Weather" and the resulting checkpoint/summary display in a running
 simulator/browser — no display/simulator access in this environment.
+
+## 23. Journey Risk + Actionable Intelligence
+
+```
+JourneyWeatherPlan (Phase 9)  +  UserContext (Phase 4)
+        │
+        ▼
+  analyzeJourney() — pure function (journey.analysis.ts)
+        │
+        ├─ evaluateCheckpointFactors(weather) → JourneyFactor[]   (reuses Phase 5's
+        │                                                          THRESHOLDS/SEVERE_WEATHER_CODES)
+        ├─ filter by persona relevance (context.weatherPriorities)
+        ├─ derive journey-level factors: WEATHER_DETERIORATION,
+        │   SEVERE_WEATHER_NEAR_DESTINATION, FAVORABLE_JOURNEY
+        └─ pick top factor by severity → riskLevel, primaryConcern,
+            affectedSegment, confidence, reasons[]
+        │
+        ▼
+  JourneyAnalysis
+        │
+        ▼
+  buildJourneyRecommendation(persona, analysis)   (journey.analysis.recommendation.ts —
+        │                                          mirrors Phase 5's persona-template pattern)
+        ▼
+  JourneyIntelligence { journeyWeatherPlan, analysis, recommendation }
+```
+
+This phase answers "given the weather I'll actually encounter along this
+journey, how risky is it, and what should I do" — it is the layer that
+turns Phase 9's raw per-checkpoint weather into an explainable, persona-
+aware decision. Like the Recommendation Engine (§13), it is **deterministic
+and rule-based, not AI**: `analyzeJourney()` is a pure function of its
+inputs, and every result carries `reasons: JourneyFactor[]` naming exactly
+which detected factors produced it.
+
+**No weather refetching, no resampling, no re-timing.** `journey.analysis.service.ts`
+takes an already-built `JourneyWeatherPlan` (Phase 9's output) and a
+`UserContext` (Phase 4's output) and does no I/O at all — no calls to
+`WeatherService`, `RoutingService`, or the routing/weather providers.
+Persona switching therefore only re-runs `analyzeJourney()` +
+`buildJourneyRecommendation()` against the same already-fetched weather —
+it never triggers a new location/route/weather round-trip (see the mobile
+section below and the live verification in §24).
+
+**Reuses Phase 5's thresholds instead of duplicating them.**
+`evaluateCheckpointFactors(weather: HourlyWeather)`
+(`journey.analysis.rules.ts`) imports `THRESHOLDS`/`SEVERE_WEATHER_CODES`
+directly from `modules/recommendations/recommendation.thresholds` — a
+parallel function to Phase 5's `evaluateFactors` was needed only because
+`HourlyWeather` (Phase 9's checkpoint weather) lacks the `feelsLike`/
+`visibility` fields `CurrentWeather` has, not because the thresholds
+themselves needed to change.
+
+**`JourneyFactor` is a separate namespace from `RecommendationFactor`,
+by design.** Per-checkpoint factors (`RAIN_DURING_JOURNEY`,
+`THUNDERSTORM_DURING_JOURNEY`, `HIGH_WIND_DURING_JOURNEY`,
+`HIGH_HEAT_DURING_JOURNEY`, `HIGH_UV_DURING_JOURNEY`) plus three
+journey-level factors (`WEATHER_DETERIORATION`,
+`SEVERE_WEATHER_NEAR_DESTINATION`, `FAVORABLE_JOURNEY`) —
+`packages/shared/src/journey-analysis.ts`. `JourneyRiskLevel` and
+`JourneyRecommendation.type`/`.priority` directly reuse Phase 5's
+`RecommendationPriority`/`RecommendationType` unions (not
+reimplemented), since those concepts — "how severe," "what kind of
+action" — are identical across both engines; only the underlying factor
+vocabulary differs because journeys have route/segment-shaped concerns
+Phase 5 never had.
+
+**Persona relevance, not persona branching.** `JOURNEY_FACTOR_PRIORITY`
+maps each per-checkpoint `JourneyFactor` to a `WeatherPriority`, exactly
+mirroring Phase 5's `FACTOR_PRIORITY` (§13) — a factor only surfaces for
+personas whose `weatherPriorities` includes it. The three journey-level
+factors are always relevant (mirroring Phase 5's treatment of favorable
+conditions), since "will the weather get worse before I arrive" and "is
+severe weather waiting near my destination" matter regardless of persona.
+
+**Do not over-personalize.** The underlying weather data and detected
+factors are identical across personas for the same `JourneyWeatherPlan` —
+only the _interpretation_ (which factors are relevant, and the
+recommendation copy) changes per persona. This was verified live, not
+just asserted (§24): the same journey produced identical `riskLevel`/
+`factors`/`affectedCheckpointSequences` for a runner and a commuter, but
+different recommendation wording.
+
+**Missing weather is never treated as bad weather.** Checkpoints with
+`weather === null` (a Phase 9 partial-failure result) are simply excluded
+from factor evaluation, not treated as risk. `confidence` (`high` |
+`medium` | `low`, `journey.analysis.config.ts` thresholds) drops as the
+fraction of weather-available checkpoints drops, so the UI can signal "we
+don't have full information" without inventing a risk level. If **no**
+checkpoint has weather, `analyzeJourney()` returns an explicit
+"Weather information is unavailable for this journey" result instead of
+defaulting to `FAVORABLE_JOURNEY` — a real result exercised live (§24).
+
+**Affected segment.** `affectedCheckpointSequences`/`affectedSegment`
+(`fromDistanceKm`/`toDistanceKm`) are derived from the min/max
+`distanceFromStartKm` among checkpoints where the top factor was
+detected — giving "which part of your journey" without any new
+route-geometry logic (reuses `distanceFromStartKm`, already computed in
+Phase 8).
+
+**Departure-time optimization — explicitly not implemented.** The spec
+allowed this as optional. It was deliberately deferred rather than faked:
+producing a real "leave 20 minutes later instead" recommendation would
+require re-running weather lookups for multiple alternative departure
+times per analysis (4–5x the Open-Meteo calls Phase 9 already showed
+hitting rate limits under a single-pass load — see §22's live
+`WEATHER_TIMEOUT`s). Implementing it now would likely produce unreliable
+or silently-degraded results; it's left for a phase that can budget for
+the additional weather traffic properly.
+
+**API: `POST /api/journey/intelligence`.** Accepts `{ journeyWeatherPlan,
+userContext }` — the existing outputs of `POST /api/journey/weather`
+(Phase 9) and `POST /api/personalization/context` (Phase 4), reused
+rather than re-derived. Performs no route/weather I/O — see
+`api-contracts.md`.
+
+**Mobile.** `journeyService.getJourneyIntelligence()` (extended, not
+duplicated) calls only `/api/journey/intelligence`. `useJourney()` gained
+`journeyIntelligence`/`persona`/`preferredTimeOfDay` state and
+`analyzeJourney()`/`setPersona()`/`setPreferredTimeOfDay()` actions.
+Changing persona/time is a plain state setter — it does **not**
+auto-trigger re-analysis; the user presses "Analyze Journey" again. This
+is a deliberate simplicity choice for the dev screen (auto-refresh on
+every tap would be surprising for a screen meant to demonstrate the
+pipeline step by step), not a limitation of the underlying architecture,
+which fully supports cheap persona-only re-analysis. `/dev/journey`
+gained a "PERSONA" section (persona/time-of-day pickers from the shared
+`PERSONAS`/`TIME_OF_DAY_OPTIONS` enumerations) and a "JOURNEY
+INTELLIGENCE" section (risk, primary concern, affected area, reasons,
+recommendation) — no risk/recommendation logic in the component.
+
+## 24. Journey Risk + Actionable Intelligence Testing
+
+Backend unit tests, deterministic, no network:
+
+- `modules/journey/journey.analysis.rules.test.ts` — factor detection for
+  rain, heavy rain, thunderstorm, high wind, high heat, high UV, plus a
+  `weatherCodeSeverity` ranking test.
+- `modules/journey/journey.analysis.test.ts` — transitions correctly
+  become `WEATHER_DETERIORATION`; affected checkpoints/distance computed
+  correctly; risk level for low/medium/high/severe weather; persona
+  differences (same weather, different relevant factors); missing weather
+  at some checkpoints never produces a false factor and lowers
+  confidence; all-weather-unavailable input never crashes and never
+  fabricates a factor; favorable-journey detection; every reason in
+  `analysis.reasons` traces back to a detected factor (never invented);
+  determinism for repeated calls with identical input.
+- `modules/journey/journey.analysis.recommendation.test.ts` — a
+  recommendation always has type/priority/title/message/action/reasons;
+  `reasons` always equals `analysis.factors` (never diverges); favorable
+  journeys get a `FAVORABLE` recommendation; the same weather produces
+  different recommendation titles for a runner vs. a commuter.
+- `modules/journey/journey.analysis.service.test.ts` — valid input
+  produces a full `JourneyIntelligence`; invalid plan, invalid persona,
+  missing body, and a malformed checkpoint are all rejected with
+  `JourneyError`; changing persona without re-fetching weather (same
+  `journeyWeatherPlan` passed twice) produces a different recommendation
+  from the same underlying weather.
+- `routes/journeyIntelligence.test.ts` — supertest against the real
+  Express `app` (`journeyAnalysisService` mocked) for
+  `POST /api/journey/intelligence`: valid request, invalid journey data,
+  invalid persona, missing body, malformed checkpoint.
+
+Fixtures extended in `apps/server/test/fixtures/cloud6/journey.ts`:
+`deterioratingJourneyWeatherPlanFixture` (7 checkpoints trending
+clear → rain → thunderstorm) and `favorableJourneyWeatherPlanFixture` (3
+clear checkpoints).
+
+Mobile unit tests:
+
+- `services/journey/journeyService.test.ts` (+3, appended) —
+  `getJourneyIntelligence()` calls the CLOUD6 backend, normalizes backend
+  error responses and network failures into `JourneyError`.
+- `hooks/useJourney.test.ts` (+3, appended) — `analyzeJourney()` requires
+  journey weather first; builds a `UserContext` for the selected persona
+  and fetches intelligence; changing persona does not refetch location,
+  route, or weather.
+
+**Live verification — the core "objective weather, subjective
+interpretation" claim, actually exercised:** a real OSRM route (Kolkata
+Park Street area → Salt Lake) was planned into an 8-checkpoint
+`JourneyPlan` (`POST /api/journey/plan`) and weather-enriched
+(`POST /api/journey/weather`) against live Open-Meteo — 5 of 8
+checkpoints returned real weather, 3 timed out (matching Phase 9's known
+rate-limit behavior). Real `UserContext` objects for `runner` and
+`commuter` were fetched from the live `POST /api/personalization/context`.
+The same `journeyWeatherPlan` was then sent to
+`POST /api/journey/intelligence` with each context: both runs returned
+identical `riskLevel: 'medium'`, `factors: ['RAIN_DURING_JOURNEY']`, and
+`affectedCheckpointSequences: [2]`, but different
+`recommendation.title`/`recommendation.action` text ("Rain expected
+during part of your run | Carry rain protection or plan an alternate
+window." for runner vs. "Rain may affect part of your commute | Allow
+extra travel time and bring rain gear." for commuter) — directly
+confirming the spec's core requirement live, not just in mocked tests.
+The 3 checkpoints with missing weather were correctly excluded from
+factor evaluation rather than treated as risk (`confidence: 'medium'`).
+An invalid `journeyWeatherPlan` (missing `route`) correctly returned
+`{ "code": "JOURNEY_INVALID_ROUTE", "message": "route is required" }`
+with HTTP 400; an invalid persona (`"astronaut"`) against a valid weather
+plan correctly returned
+`{ "code": "JOURNEY_INVALID_ROUTE", "message": "Unknown persona: astronaut" }`
+with HTTP 400. `npx expo export --platform web` bundled successfully,
+including the extended `/dev/journey` screen (Persona + Journey
+Intelligence sections).
+
+**Not performed:** interactive click-testing of the Persona picker and
+Journey Intelligence section in a running simulator/browser — no
+display/simulator access in this environment.

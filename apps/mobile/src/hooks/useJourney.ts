@@ -2,17 +2,22 @@ import { useCallback, useState } from 'react';
 import {
   JourneyError,
   LocationError,
+  PersonalizationError,
   RouteError,
   type GeoPoint,
+  type JourneyIntelligence,
   type JourneyPlan,
   type JourneyWeatherPlan,
+  type Persona,
   type Route,
+  type TimeOfDay,
 } from '@cloud6/shared';
 import { geocodingService, locationService } from '../services/location';
 import { journeyService } from '../services/journey';
+import { personalizationService } from '../services/personalization';
 import { routingService } from '../services/routing';
 
-type JourneyHookError = LocationError | RouteError | JourneyError;
+type JourneyHookError = LocationError | RouteError | JourneyError | PersonalizationError;
 
 interface UseJourneyState {
   start: GeoPoint | null;
@@ -20,6 +25,9 @@ interface UseJourneyState {
   route: Route | null;
   journeyPlan: JourneyPlan | null;
   journeyWeather: JourneyWeatherPlan | null;
+  journeyIntelligence: JourneyIntelligence | null;
+  persona: Persona;
+  preferredTimeOfDay: TimeOfDay;
   loading: boolean;
   error: JourneyHookError | null;
 }
@@ -30,15 +38,22 @@ interface UseJourneyResult extends UseJourneyState {
   getRoute: () => Promise<void>;
   planTimeline: () => Promise<void>;
   analyzeWeather: () => Promise<void>;
+  analyzeJourney: () => Promise<void>;
+  setPersona: (persona: Persona) => void;
+  setPreferredTimeOfDay: (time: TimeOfDay) => void;
   refresh: () => Promise<void>;
 }
+
+const DEFAULT_PERSONA: Persona = 'runner';
+const DEFAULT_TIME: TimeOfDay = 'flexible';
 
 /**
  * Thin orchestration hook: uses LocationService for the start point,
  * GeocodingService for destination text search, routingService for the
- * route, and journeyService for the sampled checkpoint timeline and
- * weather enrichment. No routing-provider, sampling/timeline, or weather
- * logic lives here — that all stays on the backend.
+ * route, and journeyService for the sampled checkpoint timeline, weather
+ * enrichment, and journey intelligence. No routing-provider, sampling/
+ * timeline, weather, or journey-risk logic lives here — that all stays
+ * on the backend.
  */
 export function useJourney(): UseJourneyResult {
   const [start, setStart] = useState<GeoPoint | null>(null);
@@ -46,6 +61,9 @@ export function useJourney(): UseJourneyResult {
   const [route, setRoute] = useState<Route | null>(null);
   const [journeyPlan, setJourneyPlan] = useState<JourneyPlan | null>(null);
   const [journeyWeather, setJourneyWeather] = useState<JourneyWeatherPlan | null>(null);
+  const [journeyIntelligence, setJourneyIntelligence] = useState<JourneyIntelligence | null>(null);
+  const [persona, setPersonaState] = useState<Persona>(DEFAULT_PERSONA);
+  const [preferredTimeOfDay, setPreferredTimeOfDayState] = useState<TimeOfDay>(DEFAULT_TIME);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<JourneyHookError | null>(null);
 
@@ -68,6 +86,7 @@ export function useJourney(): UseJourneyResult {
     setRoute(null);
     setJourneyPlan(null);
     setJourneyWeather(null);
+    setJourneyIntelligence(null);
     try {
       const [point] = await geocodingService.geocode(query);
       if (!point) {
@@ -92,6 +111,7 @@ export function useJourney(): UseJourneyResult {
     setError(null);
     setJourneyPlan(null);
     setJourneyWeather(null);
+    setJourneyIntelligence(null);
     try {
       const result = await routingService.getRoute(start, destination);
       setRoute(result);
@@ -113,6 +133,7 @@ export function useJourney(): UseJourneyResult {
     setLoading(true);
     setError(null);
     setJourneyWeather(null);
+    setJourneyIntelligence(null);
     try {
       const plan = await journeyService.planJourney(route);
       setJourneyPlan(plan);
@@ -136,6 +157,7 @@ export function useJourney(): UseJourneyResult {
 
     setLoading(true);
     setError(null);
+    setJourneyIntelligence(null);
     try {
       const weatherPlan = await journeyService.getJourneyWeather(journeyPlan);
       setJourneyWeather(weatherPlan);
@@ -145,6 +167,50 @@ export function useJourney(): UseJourneyResult {
       setLoading(false);
     }
   }, [journeyPlan]);
+
+  /**
+   * Regenerates journey intelligence from the already-fetched
+   * journeyWeather — never re-fetches location/route/weather. This is
+   * what makes persona switching cheap (same principle as Phase 6).
+   */
+  const analyzeJourney = useCallback(async () => {
+    if (!journeyWeather) {
+      setError(
+        new JourneyError(
+          'JOURNEY_INVALID_ROUTE',
+          'Journey weather is required before generating intelligence',
+        ),
+      );
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const context = await personalizationService.createUserContext({
+        persona,
+        preferredTimeOfDay,
+      });
+      const intelligence = await journeyService.getJourneyIntelligence(journeyWeather, context);
+      setJourneyIntelligence(intelligence);
+    } catch (cause) {
+      setError(
+        cause instanceof JourneyError || cause instanceof PersonalizationError
+          ? cause
+          : new JourneyError('JOURNEY_INVALID_ROUTE'),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [journeyWeather, persona, preferredTimeOfDay]);
+
+  const setPersona = useCallback((nextPersona: Persona) => {
+    setPersonaState(nextPersona);
+  }, []);
+
+  const setPreferredTimeOfDay = useCallback((nextTime: TimeOfDay) => {
+    setPreferredTimeOfDayState(nextTime);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!destination) {
@@ -156,6 +222,7 @@ export function useJourney(): UseJourneyResult {
     setError(null);
     setJourneyPlan(null);
     setJourneyWeather(null);
+    setJourneyIntelligence(null);
     try {
       const point = await locationService.getCurrentLocation();
       setStart(point);
@@ -178,6 +245,9 @@ export function useJourney(): UseJourneyResult {
     route,
     journeyPlan,
     journeyWeather,
+    journeyIntelligence,
+    persona,
+    preferredTimeOfDay,
     loading,
     error,
     loadStart,
@@ -185,6 +255,9 @@ export function useJourney(): UseJourneyResult {
     getRoute,
     planTimeline,
     analyzeWeather,
+    analyzeJourney,
+    setPersona,
+    setPreferredTimeOfDay,
     refresh,
   };
 }
