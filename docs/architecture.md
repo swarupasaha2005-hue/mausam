@@ -1,6 +1,6 @@
 # CLOUD6 Architecture
 
-Status: **Phase 6 — End-to-End Integration**. This document describes the architecture
+Status: **Phase 7 — Maps + Routing**. This document describes the architecture
 established so far, and the intended shape of the system in later phases.
 It does not describe implemented product functionality — see
 `development-roadmap.md` for what is and isn't built yet.
@@ -736,3 +736,206 @@ changes). `npx expo export --platform web` bundled successfully (809
 modules, including `/dev/dashboard`). Interactive click-testing of the
 full location → weather → recommendation flow on a simulator/device was
 not performed in this environment.
+
+## 17. Maps + Routing
+
+```
+📍 Start (LocationService)     🔎 Destination (GeocodingService.geocode)
+        │                              │
+        └──────────────┬───────────────┘
+                        ▼
+                  routingService
+                        │ (mobile → CLOUD6 backend)
+                        ▼
+              GET /api/routes
+                        │
+                        ▼
+                 RoutingService (modules/routing)
+                        │  depends on the RoutingProvider interface
+                        ▼
+              OsrmRoutingProvider (integrations/routing/osrm)
+                        │
+                        ▼
+                      OSRM
+                        │
+                        ▼
+        Route { start, destination, distanceKm,
+                durationMinutes, coordinates[] }
+                        │
+                        ▼
+                    MapView (visualization only)
+```
+
+This phase builds the geographic foundation for the future Journey
+Weather Intelligence feature (§6) — it does **not** implement weather-
+along-route itself. It intentionally mirrors the
+`modules/* → integrations/*` port/adapter split already used for weather
+(§9) and personalization (§11).
+
+**Route model** (`packages/shared/src/route.ts`) is purely
+geographic — `start`, `destination`, `distanceKm`, `durationMinutes`,
+`coordinates: GeoPoint[]`. No weather or recommendation fields, by
+design: a future `RecommendationService` or Journey Engine will combine
+`Route` with `WeatherService`/`PersonalizationService` output, not have
+weather baked into the route itself.
+
+**Why `coordinates[]` matters most.** The single most important part of
+this model for future phases is `coordinates` (a dense polyline, not
+just start/end) plus `durationMinutes`. The intended future pipeline —
+not implemented in this phase — is:
+
+```
+Route.coordinates[] + Route.durationMinutes
+        ↓
+   sample route points (future Phase 9)
+        ↓
+   estimate arrival time at each sampled point
+        ↓
+   WeatherService.getWeatherAt(point, timestamp)   ← already exists (§9)
+        ↓
+   Journey Weather Intelligence (future Phase 9+)
+```
+
+`WeatherService.getWeatherAt()` was already built in Phase 3
+specifically for this — Phase 7 only had to preserve the route geometry
+and duration needed to eventually call it per sampled point.
+
+**RoutingService** (`apps/server/src/modules/routing/routing.service.ts`)
+validates both coordinates via the existing shared `isValidGeoPoint`
+(the same validator Location/Weather use — not reimplemented), then
+delegates to the `RoutingProvider` port
+(`modules/routing/routing.types.ts`). `OsrmRoutingProvider`
+(`integrations/routing/osrm/`) is the only adapter today; swapping
+routing providers later means writing a new adapter, not touching
+`RoutingService` or the API route.
+
+**OSRM integration.** `osrm.client.ts` calls the public OSRM demo server
+(`OSRM_BASE_URL`, defaults to `https://router.project-osrm.org`, no API
+key) requesting `geometries=geojson` so the response includes a full
+`[lon, lat]` polyline, not just a distance/duration summary.
+`osrm.mapper.ts` converts OSRM's meters → `distanceKm`, seconds →
+`durationMinutes`, and `[longitude, latitude]` pairs → `GeoPoint[]`
+(`{ latitude, longitude }`) — GeoJSON's coordinate order is the opposite
+of `GeoPoint`'s, which is exactly the kind of provider quirk this mapper
+exists to hide. Nothing outside `osrm.mapper.ts` sees a raw OSRM
+response.
+
+**API.** `GET /api/routes?startLatitude=...&startLongitude=...&destinationLatitude=...&destinationLongitude=...`
+returns only the normalized `Route` — see `api-contracts.md`.
+
+**Destination selection reuses Phase 2's `GeocodingService`,
+extended, not duplicated.** `GeocodingProvider` (mobile) gained a second
+method, `geocode(query): Promise<GeoPoint[]>` (forward geocoding —
+text → coordinates), implemented in `expoGeocodingProvider` via Expo's
+`Location.geocodeAsync`, alongside the existing `reverseGeocode`
+(coordinates → text) from Phase 2. This is the same provider/service
+pair gaining its natural complementary operation, not a second geocoding
+provider. No autocomplete/place-ranking was built — a single
+best-match text search is enough for this prototype.
+
+**Mobile routing service**
+(`apps/mobile/src/services/routing/routingService.ts`) only calls
+`GET /api/routes` on the CLOUD6 backend and normalizes backend error
+responses into the shared `RouteError` — it never talks to OSRM and
+contains no routing-provider logic, mirroring `weatherService` (§9) and
+`recommendationsService` (§13).
+
+### Map technology: Leaflet on web, no native map SDK
+
+- **Web:** `MapView.web.tsx` renders an actual Leaflet map via
+  `react-leaflet` (start/destination markers, route polyline, OSM tiles,
+  auto-fit-to-bounds). This is real Leaflet, directly.
+- **Native (iOS/Android):** `MapView.tsx` (the default, non-`.web`
+  variant Metro resolves for native builds) renders a simple text
+  summary of the same route data instead of pulling in a native map SDK.
+  Leaflet is a web library — forcing it into React Native would require a
+  WebView wrapper, and a native map alternative
+  (`react-native-maps`) needs native config/build steps this environment
+  cannot build or verify. Rather than add an unverifiable dependency, the
+  native path stays a placeholder with the same `MapViewProps` contract,
+  so a native map renderer can be swapped in later without touching
+  routing/journey logic anywhere else.
+- **Platform selection is automatic**, via Metro/Expo's `.web.tsx` file
+  extension convention — no runtime `Platform.OS` branching needed, and
+  the native bundle never imports `leaflet`/`react-leaflet` at all.
+- **Map rendering is fully decoupled from routing logic.** `MapView`
+  only accepts `{ start, destination, routeCoordinates }`
+  (`components/map/types.ts`) and issues no requests — it doesn't know
+  `routingService`, the backend, or OSRM exist. `/dev/journey` is the
+  only thing that wires `useJourney()`'s data into `MapView`.
+
+### `useJourney()` hook (`apps/mobile/src/hooks/`)
+
+Thin orchestration, no routing-provider logic: `loadStart()` (from
+`locationService`), `searchDestination(query)` (from
+`geocodingService.geocode`), `getRoute()` (from `routingService`, only
+once both start and destination are set), and `refresh()` (re-fetches
+location, then re-requests the route if a destination is already
+selected). A route is never fetched implicitly — only on an explicit
+`getRoute()`/`refresh()` call, or destination search — per the "don't
+refetch on rerender" requirement.
+
+### `/dev/journey` developer screen
+
+`apps/mobile/app/dev/journey.tsx` is a temporary, intentionally basic
+screen (marked "DEVELOPMENT / TESTING ONLY") wiring `useJourney()`'s data
+into `MapView` plus text fields for distance/duration/point count. Auto-
+loads the start location on mount (mirroring `/dev/dashboard`'s
+auto-load); destination requires an explicit search. No routing/OSRM
+logic lives in the component. Not the final CLOUD6 journey UI.
+
+## 18. Maps + Routing Testing
+
+Backend unit tests — 25 new tests, deterministic, no network:
+
+- `integrations/routing/osrm/osrm.client.test.ts` (5) — HTTP success,
+  HTTP failure, network failure, timeout, malformed JSON, against a
+  mocked `global.fetch`.
+- `integrations/routing/osrm/osrm.mapper.test.ts` (8) — meters→km,
+  seconds→minutes, `[lon,lat]`→`GeoPoint[]` mapping; `ROUTE_NOT_FOUND`
+  for OSRM's `NoRoute` code and an empty routes array;
+  `ROUTE_INVALID_RESPONSE` for missing distance/duration/geometry.
+- `modules/routing/routing.service.test.ts` (5) — valid start+destination
+  delegates to the provider; invalid start/destination rejected without
+  calling the provider; provider failure and `ROUTE_NOT_FOUND` normalized
+  correctly.
+- `routes/routes.test.ts` (7) — supertest against the real Express `app`
+  (`routingService` mocked): valid request, missing start/destination,
+  invalid latitude/longitude, provider failure (502), not-found (404),
+  and asserting no raw OSRM field names (`geometry`, `distance`) leak
+  into the response.
+
+Mobile unit tests — 20 new tests:
+
+- `services/location/geocodingService.test.ts` (+3, appended — not a new
+  file) — `geocode()` success, provider failure → `GEOCODING_FAILED`,
+  empty results. Existing `reverseGeocode` tests untouched.
+- `services/routing/routingService.test.ts` (4) — calls the CLOUD6
+  backend (not `router.project-osrm.org`), normalizes backend error
+  responses, network failures, and malformed JSON into `RouteError`.
+- `hooks/useJourney.test.ts` (9) — initial empty state, `loadStart`
+  success/failure, `searchDestination` success/no-match,
+  `getRoute` requiring both points, a route not being fetched
+  automatically after only start+destination are set (only on an
+  explicit `getRoute()`/`refresh()` call), and `refresh()` re-triggering
+  location + route.
+
+Fixtures: `apps/server/test/fixtures/osrm/route.ts` (raw OSRM shape) and
+`apps/server/test/fixtures/cloud6/route.ts` (expected normalized
+`Route`), following the same provider/CLOUD6 fixture split established
+in §10 and §14.
+
+**Live verification:** the running dev server's `GET /api/routes` was
+hit directly against the live OSRM demo server for a real Kolkata route
+(Park Street area → Salt Lake) — returned `distanceKm: 12.7473`,
+`durationMinutes: 18.02`, and 370 `coordinates`, with the first/last
+coordinates matching the requested start/destination (confirming the
+polyline is a real route, not placeholder data). An invalid-latitude
+request and a missing-parameters request both correctly returned 400.
+`npx expo export --platform web` bundled successfully (858 modules,
+including the Leaflet CSS bundle and `/dev/journey`).
+
+**Not performed:** interactive click-testing of `/dev/journey` in a
+running simulator/browser (selecting a destination, tapping Get Route,
+visually confirming markers/polyline) — no display/simulator access in
+this environment. The Expo web bundle succeeding is not the same claim.

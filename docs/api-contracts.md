@@ -1,9 +1,9 @@
 # CLOUD6 API Contracts
 
-Status: **Phase 5 — Recommendation Engine**. Only the endpoints below
-exist. Future endpoints (location, journey, alerts, users) will be
-documented here as each module is implemented — they are intentionally
-not speculated on yet.
+Status: **Phase 7 — Maps + Routing**. Only the endpoints below exist.
+Future endpoints (journey, alerts, users) will be documented here as
+each module is implemented — they are intentionally not speculated on
+yet.
 
 ## `GET /health`
 
@@ -290,3 +290,58 @@ produced when no risk factors are relevant).
 
 `code` is one of `RECOMMENDATION_INVALID_CONTEXT`,
 `RECOMMENDATION_INVALID_WEATHER`.
+
+## Routes
+
+### `GET /api/routes`
+
+Returns a normalized driving route between two points — geographic data
+only (distance, duration, polyline coordinates). No weather or
+recommendation information. See `architecture.md` §17.
+
+**Query parameters**
+
+| name                   | required | notes       |
+| ---------------------- | -------- | ----------- |
+| `startLatitude`        | yes      | -90 to 90   |
+| `startLongitude`       | yes      | -180 to 180 |
+| `destinationLatitude`  | yes      | -90 to 90   |
+| `destinationLongitude` | yes      | -180 to 180 |
+
+**Request**
+
+```
+GET /api/routes?startLatitude=22.5726&startLongitude=88.3639&destinationLatitude=22.5958&destinationLongitude=88.4497
+```
+
+**Response — 200 OK**
+
+```json
+{
+  "start": { "latitude": 22.5726, "longitude": 88.3639 },
+  "destination": { "latitude": 22.5958, "longitude": 88.4497 },
+  "distanceKm": 12.7473,
+  "durationMinutes": 18.02,
+  "coordinates": [
+    { "latitude": 22.57285, "longitude": 88.364023 },
+    { "latitude": 22.572927, "longitude": 88.363855 }
+  ]
+}
+```
+
+`coordinates` is the full route polyline (hundreds of points for a
+real route), not just start/end — see `architecture.md` §17 for why
+that matters for the future Journey Weather Engine.
+
+**Response — 400 Bad Request** for missing/invalid coordinates.
+
+**Response — 404 Not Found** when no route exists between the points
+(`ROUTE_NOT_FOUND`).
+
+```json
+{ "error": { "code": "ROUTE_INVALID_COORDINATES", "message": "..." } }
+```
+
+`code` is one of `ROUTE_INVALID_COORDINATES` (400), `ROUTE_NOT_FOUND`
+(404), `ROUTE_TIMEOUT` (504), `ROUTE_PROVIDER_ERROR` /
+`ROUTE_REQUEST_FAILED` / `ROUTE_INVALID_RESPONSE` (502).

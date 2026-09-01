@@ -20,6 +20,17 @@ export class GeocodingService {
       );
     }
   }
+
+  async geocode(query: string): Promise<GeoPoint[]> {
+    try {
+      return await this.provider.geocode(query);
+    } catch (cause) {
+      throw new LocationError(
+        'GEOCODING_FAILED',
+        cause instanceof Error ? cause.message : undefined,
+      );
+    }
+  }
 }
 
 export const geocodingService = new GeocodingService(expoGeocodingProvider);

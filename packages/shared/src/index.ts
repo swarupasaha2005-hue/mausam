@@ -37,3 +37,6 @@ export type {
 export { FACTOR_PRIORITY } from './recommendation';
 export { RecommendationError } from './recommendation-error';
 export type { RecommendationErrorCode } from './recommendation-error';
+export type { Route } from './route';
+export { RouteError } from './route-error';
+export type { RouteErrorCode } from './route-error';

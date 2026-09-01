@@ -83,7 +83,28 @@ to the next phase.
   `/dev/dashboard`. The full location → weather → recommendation flow was
   not interactively click-tested on a simulator/device in this
   environment.
-- **Phase 7 — Maps & Routing** — ⏳ NOT IMPLEMENTED
+- **Phase 7 — Maps & Routing** — ✅ IMPLEMENTED, UNIT-TESTED, LIVE-VERIFIED — ⏳ mobile UI click-testing pending
+  OSRM integration (`integrations/routing/osrm`) behind a
+  `RoutingProvider` port, `RoutingService` (shared `isValidGeoPoint`
+  validation, error normalization), `GET /api/routes`, shared `Route`
+  model (`start`, `destination`, `distanceKm`, `durationMinutes`,
+  `coordinates[]` — geographic only, no weather/recommendation fields).
+  `GeocodingService` extended with forward geocoding (`geocode()`) for
+  destination text search — the existing Phase 2 provider/service, not a
+  second one. Mobile `routingService` (backend-only, never calls OSRM),
+  `useJourney()` hook, `MapView` component (Leaflet via `react-leaflet`
+  on web through Metro's `.web.tsx` resolution; a text-summary fallback
+  on native — no native map SDK added), `/dev/journey` developer test
+  screen. See `architecture.md` §17. 25 backend + 20 mobile unit tests
+  pass, all mocked (§18). Manually verified against the live OSRM demo
+  server: a real Kolkata route returned `distanceKm: 12.7473`,
+  `durationMinutes: 18.02`, and 370 route coordinates whose first/last
+  points matched the requested start/destination. Invalid-coordinate and
+  missing-parameter requests correctly returned 400. `npx expo export
+--platform web` bundled successfully (858 modules, including the
+  Leaflet CSS bundle and `/dev/journey`). The interactive
+  destination-search → Get Route → map-renders flow was not click-tested
+  in a running simulator/browser in this environment.
 - **Phase 8 — Route Sampling** — ⏳ NOT IMPLEMENTED
 - **Phase 9 — Journey Weather Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 10 — Journey Risk Engine** — ⏳ NOT IMPLEMENTED
@@ -93,4 +114,4 @@ to the next phase.
 - **Phase 14 — My Day / Activity Intelligence** — ⏳ NOT IMPLEMENTED
 - **Phase 15 — Final UI/UX & Polish** — ⏳ NOT IMPLEMENTED
 
-Do not assume any phase beyond Phase 6 is complete.
+Do not assume any phase beyond Phase 7 is complete.

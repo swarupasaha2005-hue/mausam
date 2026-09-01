@@ -50,6 +50,9 @@ export default function Index() {
       <Link href="/dev/dashboard" style={styles.devLink}>
         End-to-end dashboard dev test screen
       </Link>
+      <Link href="/dev/journey" style={styles.devLink}>
+        Maps + Routing dev test screen
+      </Link>
     </View>
   );
 }

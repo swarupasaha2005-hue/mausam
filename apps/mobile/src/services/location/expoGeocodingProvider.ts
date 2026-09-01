@@ -22,4 +22,9 @@ export const expoGeocodingProvider: GeocodingProvider = {
       country: result.country ?? undefined,
     };
   },
+
+  async geocode(query: string): Promise<GeoPoint[]> {
+    const results = await ExpoLocation.geocodeAsync(query);
+    return results.map((result) => ({ latitude: result.latitude, longitude: result.longitude }));
+  },
 };

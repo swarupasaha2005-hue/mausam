@@ -7,4 +7,6 @@ import type { GeoPoint, Location } from '@cloud6/shared';
  */
 export interface GeocodingProvider {
   reverseGeocode(point: GeoPoint): Promise<Partial<Location>>;
+  /** Forward geocoding: free-text address/place → candidate coordinates. */
+  geocode(query: string): Promise<GeoPoint[]>;
 }
