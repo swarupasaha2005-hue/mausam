@@ -18,8 +18,23 @@ interface DestinationSearchProps {
 
 type Status = 'idle' | 'searching' | 'success' | 'empty' | 'error';
 
-function labelFor(point: GeoPoint, place: { name?: string; city?: string; state?: string; country?: string }) {
-  const label = place.name ?? place.city ?? `${point.latitude.toFixed(3)}, ${point.longitude.toFixed(3)}`;
+/**
+ * The backend's /api/geocoding only returns { latitude, longitude } (no
+ * name field — GeoPoint has none, and adding one is out of scope here),
+ * and reverse geocoding is native-only (returns {} on web). When there's
+ * exactly one candidate, the text the user searched for is the closest
+ * thing we have to a real place name for it — for multiple candidates
+ * that would be ambiguous (the same text on every distinct result), so
+ * those fall back to coordinates to stay visually distinguishable.
+ */
+function labelFor(
+  point: GeoPoint,
+  place: { name?: string; city?: string; state?: string; country?: string },
+  query: string,
+  isOnlyResult: boolean,
+) {
+  const coordinateFallback = `${point.latitude.toFixed(2)}, ${point.longitude.toFixed(2)}`;
+  const label = place.name ?? place.city ?? (isOnlyResult ? query : coordinateFallback);
   const sublabelParts = [place.city, place.state].filter(
     (part): part is string => !!part && part !== label,
   );
@@ -54,10 +69,11 @@ export function DestinationSearch({ onSelect }: DestinationSearchProps) {
         return;
       }
 
+      const candidatePoints = points.slice(0, 5);
       const candidates = await Promise.all(
-        points.slice(0, 5).map(async (point) => {
+        candidatePoints.map(async (point) => {
           const place = await geocodingService.reverseGeocode(point).catch(() => ({}));
-          return { point, ...labelFor(point, place) };
+          return { point, ...labelFor(point, place, trimmed, candidatePoints.length === 1) };
         }),
       );
       setResults(candidates);

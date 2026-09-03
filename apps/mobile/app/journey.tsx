@@ -24,7 +24,7 @@ import { colors, spacing, typography } from '../src/theme';
 
 const ERROR_MESSAGES: Record<string, string> = {
   LOCATION_UNAVAILABLE: "We couldn't get your location.",
-  LOCATION_PERMISSION_DENIED: "We couldn't get your location.",
+  LOCATION_PERMISSION_DENIED: 'Location access is required to plan a journey.',
   LOCATION_TIMEOUT: "We couldn't get your location.",
   GEOCODING_FAILED: "We couldn't find that place.",
   ROUTE_NOT_FOUND: "We couldn't plan this route right now.",
@@ -123,7 +123,14 @@ export default function JourneyScreen() {
     await analyzeJourney();
   }
 
-  const startLabel = startPlace?.city ?? startPlace?.name ?? null;
+  // Mirrors Home's fallback (app/index.tsx): prefer a reverse-geocoded
+  // place name, but a coordinate fallback still counts as "we know where
+  // you are" — reverse geocoding returning {} (e.g. on web, where
+  // ExpoLocation.reverseGeocodeAsync is native-only) must not be
+  // confused with location itself being unavailable.
+  const startLabel = startPlace?.city
+    ?? startPlace?.name
+    ?? (start ? `${start.latitude.toFixed(2)}, ${start.longitude.toFixed(2)}` : null);
   const destinationLabel = selectedDestination?.label ?? 'Destination';
   const routeReady = !!route;
   const allWeatherUnavailable =

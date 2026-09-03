@@ -7,11 +7,20 @@ interface DestinationResultProps {
   onPress: () => void;
 }
 
-/** One selectable row in the destination search results list. */
+/**
+ * One selectable row in the destination search results list.
+ *
+ * Fires on `onPressIn`, not `onPress`. On web, clicking this row while
+ * the search TextInput still has focus blurs that input on mousedown,
+ * before mouseup/click completes — `onPress` (which only fires if
+ * press-in and press-out resolve to the same target) can silently never
+ * fire as a result. `onPressIn` fires immediately at press-start, before
+ * that race window opens, so selection is unaffected by it.
+ */
 export function DestinationResult({ label, sublabel, onPress }: DestinationResultProps) {
   return (
     <Pressable
-      onPress={onPress}
+      onPressIn={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       accessibilityRole="button"
     >

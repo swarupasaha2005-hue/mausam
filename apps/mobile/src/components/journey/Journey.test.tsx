@@ -344,8 +344,15 @@ function instanceText(instance: import('react-test-renderer').ReactTestInstance)
 
 function findByText(root: ReturnType<typeof create>, needle: string) {
   return root.root.findAll(
-    (node) => typeof node.props.onPress === 'function' && instanceText(node).includes(needle),
+    (node) =>
+      (typeof node.props.onPress === 'function' || typeof node.props.onPressIn === 'function') &&
+      instanceText(node).includes(needle),
   )[0];
+}
+
+/** Simulates the real activation event for a pressable found via findByText — onPressIn if present (destination result rows), otherwise onPress. */
+function activate(node: ReturnType<typeof findByText>) {
+  (node.props.onPressIn ?? node.props.onPress)();
 }
 
 beforeEach(() => {
@@ -370,6 +377,48 @@ describe('Journey screen', () => {
     });
     expect(textContains(root, 'FROM')).toBe(true);
     expect(textContains(root, 'Kolkata')).toBe(true);
+  });
+
+  it('shows a coordinate fallback when start exists but reverse geocoding returns nothing', async () => {
+    mockedGeocodingService.reverseGeocode.mockResolvedValue({});
+    mockedUseJourney.mockReturnValue(journeyState({ start: START }));
+    const root = renderJson();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(textContains(root, '22.57, 88.36')).toBe(true);
+    expect(textContains(root, 'Current location unavailable')).toBe(false);
+  });
+
+  it('does not offer Retry on the FROM field when start exists (even without a place name)', async () => {
+    mockedGeocodingService.reverseGeocode.mockResolvedValue({});
+    mockedUseJourney.mockReturnValue(journeyState({ start: START }));
+    const root = renderJson();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(findByText(root, 'Retry')).toBeUndefined();
+  });
+
+  it('shows a locating state while start has not loaded yet', () => {
+    mockedUseJourney.mockReturnValue(journeyState({ start: null, loading: true }));
+    const root = renderJson();
+    expect(textContains(root, 'Locating…')).toBe(true);
+    expect(textContains(root, 'Current location unavailable')).toBe(false);
+  });
+
+  it('shows a clear message and Retry when location permission is denied', () => {
+    mockedUseJourney.mockReturnValue(
+      journeyState({
+        start: null,
+        loading: false,
+        error: { code: 'LOCATION_PERMISSION_DENIED', message: 'x' } as never,
+      }),
+    );
+    const root = renderJson();
+    expect(textContains(root, 'Current location unavailable')).toBe(true);
+    expect(textContains(root, 'Location access is required to plan a journey.')).toBe(true);
+    expect(findByText(root, 'Retry')).toBeDefined();
   });
 
   it('renders the destination input', () => {
@@ -400,6 +449,43 @@ describe('Journey screen', () => {
     expect(textContains(root, 'Kolkata, West Bengal')).toBe(true);
   });
 
+  it('falls back to the search query as the label when reverse geocoding returns nothing (single result)', async () => {
+    mockedGeocodingService.geocode.mockResolvedValue([DESTINATION]);
+    mockedGeocodingService.reverseGeocode.mockResolvedValue({});
+    mockedUseJourney.mockReturnValue(journeyState());
+    const root = renderJson();
+
+    const input = root.root.findByProps({ placeholder: 'Where are you headed?' });
+    await act(async () => {
+      input.props.onChangeText('Salt Lake, Kolkata');
+    });
+    await act(async () => {
+      await input.props.onSubmitEditing();
+    });
+
+    expect(textContains(root, 'Salt Lake, Kolkata')).toBe(true);
+    expect(textContains(root, '22.60, 88.45')).toBe(false);
+  });
+
+  it('falls back to coordinates (not the ambiguous query text) when multiple candidates have no name', async () => {
+    const SECOND_CANDIDATE = { latitude: 40.76078, longitude: -111.89105 };
+    mockedGeocodingService.geocode.mockResolvedValue([DESTINATION, SECOND_CANDIDATE]);
+    mockedGeocodingService.reverseGeocode.mockResolvedValue({});
+    mockedUseJourney.mockReturnValue(journeyState());
+    const root = renderJson();
+
+    const input = root.root.findByProps({ placeholder: 'Where are you headed?' });
+    await act(async () => {
+      input.props.onChangeText('Salt Lake');
+    });
+    await act(async () => {
+      await input.props.onSubmitEditing();
+    });
+
+    expect(textContains(root, '22.60, 88.45')).toBe(true);
+    expect(textContains(root, '40.76, -111.89')).toBe(true);
+  });
+
   it('selecting a destination calls selectDestination with the chosen point', async () => {
     mockedGeocodingService.geocode.mockResolvedValue([DESTINATION]);
     mockedGeocodingService.reverseGeocode.mockResolvedValue({ name: 'New Town', city: 'Kolkata' });
@@ -417,10 +503,59 @@ describe('Journey screen', () => {
 
     const result = findByText(root, 'New Town');
     await act(async () => {
-      result.props.onPress();
+      activate(result);
     });
 
     expect(selectDestination).toHaveBeenCalledWith(DESTINATION);
+  });
+
+  it('clears the search results and closes the list once a destination is selected', async () => {
+    mockedGeocodingService.geocode.mockResolvedValue([DESTINATION]);
+    mockedGeocodingService.reverseGeocode.mockResolvedValue({ name: 'New Town' });
+    mockedUseJourney.mockReturnValue(journeyState());
+    const root = renderJson();
+
+    const input = root.root.findByProps({ placeholder: 'Where are you headed?' });
+    await act(async () => {
+      input.props.onChangeText('New Town');
+    });
+    await act(async () => {
+      await input.props.onSubmitEditing();
+    });
+    expect(textContains(root, 'Search results')).toBe(true);
+
+    const result = findByText(root, 'New Town');
+    await act(async () => {
+      activate(result);
+    });
+
+    expect(textContains(root, 'Search results')).toBe(false);
+  });
+
+  it('updates selectedDestination (local UI state) so Plan Journey reflects the selection immediately', async () => {
+    mockedGeocodingService.geocode.mockResolvedValue([DESTINATION]);
+    mockedGeocodingService.reverseGeocode.mockResolvedValue({ name: 'New Town' });
+    mockedUseJourney.mockReturnValue(journeyState({ start: START }));
+    const root = renderJson();
+
+    const input = root.root.findByProps({ placeholder: 'Where are you headed?' });
+    await act(async () => {
+      input.props.onChangeText('New Town');
+    });
+    await act(async () => {
+      await input.props.onSubmitEditing();
+    });
+
+    let button = findByText(root, 'Plan Journey');
+    expect(button.props.disabled).toBe(true);
+
+    const result = findByText(root, 'New Town');
+    await act(async () => {
+      activate(result);
+    });
+
+    button = findByText(root, 'Plan Journey');
+    expect(button.props.disabled).toBe(false);
   });
 
   it('disables Plan Journey until a destination is selected', async () => {
@@ -428,6 +563,34 @@ describe('Journey screen', () => {
     const root = await renderJsonAndFlush();
     const button = findByText(root, 'Plan Journey');
     expect(button.props.disabled).toBe(true);
+  });
+
+  it('enables Plan Journey once start and destination both exist and nothing is loading', async () => {
+    mockedGeocodingService.geocode.mockResolvedValue([DESTINATION]);
+    mockedGeocodingService.reverseGeocode.mockResolvedValue({ name: 'New Town' });
+    mockedUseJourney.mockReturnValue(
+      journeyState({ start: START, destination: DESTINATION, loading: false }),
+    );
+    const root = await renderJsonAndFlush();
+
+    // The "Plan Journey" disabled state depends on the destination the
+    // user actually selected from search results (local UI state), not
+    // just useJourney()'s destination field — select one the same way a
+    // real user would.
+    const input = root.root.findByProps({ placeholder: 'Where are you headed?' });
+    await act(async () => {
+      input.props.onChangeText('New Town');
+    });
+    await act(async () => {
+      await input.props.onSubmitEditing();
+    });
+    const result = findByText(root, 'New Town');
+    await act(async () => {
+      activate(result);
+    });
+
+    const button = findByText(root, 'Plan Journey');
+    expect(button.props.disabled).toBe(false);
   });
 
   it('Plan Journey triggers route planning', async () => {
