@@ -1,6 +1,17 @@
+import { Platform } from 'react-native';
 import { LocationError, type GeoPoint, type Location } from '@cloud6/shared';
+import { backendGeocodingProvider } from './backendGeocodingProvider';
 import { expoGeocodingProvider } from './expoGeocodingProvider';
 import type { GeocodingProvider } from './geocodingProvider';
+
+function resolveDefaultProvider(): GeocodingProvider {
+  // ExpoLocation.geocodeAsync/reverseGeocodeAsync are native-only — they
+  // throw unconditionally on web (no browser has a built-in geocoder), so
+  // web goes through the backend's Open-Meteo-backed /api/geocoding
+  // instead. Native keeps the on-device geocoder — it's already fast and
+  // reliable there, no network round trip needed.
+  return Platform.OS === 'web' ? backendGeocodingProvider : expoGeocodingProvider;
+}
 
 /**
  * The rest of the app should depend on this service, not on a specific
@@ -33,4 +44,4 @@ export class GeocodingService {
   }
 }
 
-export const geocodingService = new GeocodingService(expoGeocodingProvider);
+export const geocodingService = new GeocodingService(resolveDefaultProvider());

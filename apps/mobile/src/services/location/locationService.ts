@@ -10,12 +10,30 @@ function resolveDefaultProvider(): DeviceLocationProvider {
     : expoDeviceLocationProvider;
 }
 
+function devLog(...args: unknown[]): void {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.log('[Cloud6 Location]', ...args);
+  }
+}
+
 /**
  * Isolates all device location access behind a stable interface. Nothing
  * outside this module should talk to a DeviceLocationProvider directly.
  */
 export class LocationService {
-  constructor(private readonly provider: DeviceLocationProvider = resolveDefaultProvider()) {}
+  constructor(private provider: DeviceLocationProvider = resolveDefaultProvider()) {}
+
+  /**
+   * Development-only: swap the active provider at runtime, e.g. the
+   * /dev/connection diagnostic screen's "Use Test Location" control. Lets
+   * the rest of the app (Home, Journey) be proven end-to-end even when
+   * browser/device GPS permission isn't available in the current
+   * environment. Never called from production code paths.
+   */
+  useDevProvider(provider: DeviceLocationProvider): void {
+    if (typeof __DEV__ !== 'undefined' && !__DEV__) return;
+    this.provider = provider;
+  }
 
   checkPermission(): Promise<LocationPermissionStatus> {
     return this.provider.checkPermission();
@@ -26,20 +44,36 @@ export class LocationService {
   }
 
   async getCurrentLocation(): Promise<GeoPoint> {
-    const permission = await this.provider.checkPermission();
+    devLog('requesting permission (checking current status)');
+    let permission = await this.provider.checkPermission();
+    devLog('permission status:', permission);
+    // 'undetermined' means the OS/browser has never actually shown the
+    // permission prompt yet — checkPermission() only reads the current
+    // state, it never triggers the dialog. Without this, the app would
+    // fail with LOCATION_PERMISSION_DENIED on every first launch, before
+    // the user ever had a chance to grant access.
+    if (permission === 'undetermined') {
+      devLog('permission undetermined — actively requesting it now');
+      permission = await this.provider.requestPermission();
+      devLog('permission result after request:', permission);
+    }
     if (permission !== 'granted') {
+      devLog('error: LOCATION_PERMISSION_DENIED');
       throw new LocationError('LOCATION_PERMISSION_DENIED');
     }
 
     const enabled = await this.provider.isLocationEnabled();
     if (!enabled) {
+      devLog('error: LOCATION_UNAVAILABLE (location services disabled)');
       throw new LocationError('LOCATION_UNAVAILABLE');
     }
 
     let point: GeoPoint;
     try {
       point = await this.provider.getCurrentPosition();
+      devLog('provider result:', point);
     } catch (cause) {
+      devLog('error from provider.getCurrentPosition:', cause);
       if (cause instanceof LocationError) {
         throw cause;
       }
@@ -50,6 +84,7 @@ export class LocationService {
     }
 
     if (!isValidGeoPoint(point)) {
+      devLog('error: LOCATION_INVALID', point);
       throw new LocationError('LOCATION_INVALID');
     }
 

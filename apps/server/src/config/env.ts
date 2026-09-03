@@ -10,4 +10,6 @@ export const env = {
   weatherRequestTimeoutMs: Number(process.env.WEATHER_REQUEST_TIMEOUT_MS ?? 8000),
   osrmBaseUrl: process.env.OSRM_BASE_URL ?? 'https://router.project-osrm.org',
   routingRequestTimeoutMs: Number(process.env.ROUTING_REQUEST_TIMEOUT_MS ?? 8000),
+  geocodingBaseUrl: process.env.GEOCODING_BASE_URL ?? 'https://geocoding-api.open-meteo.com/v1/search',
+  geocodingRequestTimeoutMs: Number(process.env.GEOCODING_REQUEST_TIMEOUT_MS ?? 8000),
 };

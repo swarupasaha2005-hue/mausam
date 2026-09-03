@@ -42,6 +42,12 @@ function buildUrl(path: string, query?: Record<string, string>): string {
   return `${url}?${new URLSearchParams(query).toString()}`;
 }
 
+function devLog(...args: unknown[]): void {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.log('[Cloud6 API]', ...args);
+  }
+}
+
 /**
  * Single shared HTTP client for every CLOUD6 backend call. Constructs the
  * URL from EXPO_PUBLIC_API_BASE_URL, parses JSON, applies a timeout, and
@@ -52,18 +58,22 @@ function buildUrl(path: string, query?: Record<string, string>): string {
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', query, body, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
+  const url = buildUrl(path, query);
+  devLog(method, url);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
-    response = await fetch(buildUrl(path, query), {
+    response = await fetch(url, {
       method,
       headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
   } catch (cause) {
+    devLog(method, url, '-> network error:', cause instanceof Error ? cause.message : cause);
     const isAbort = cause instanceof Error && cause.name === 'AbortError';
     throw new ApiRequestFailedError(
       isAbort
@@ -77,6 +87,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     clearTimeout(timeout);
   }
 
+  devLog(method, url, '-> response status:', response.status);
+
   if (!response.ok) {
     let errorCode: string | undefined;
     try {
@@ -85,6 +97,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     } catch {
       // response body wasn't JSON — errorCode stays undefined.
     }
+    devLog(method, url, '-> error body code:', errorCode);
     throw new ApiHttpError(
       response.status,
       errorCode,
@@ -95,6 +108,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   try {
     return (await response.json()) as T;
   } catch {
+    devLog(method, url, '-> response was not valid JSON');
     throw new ApiInvalidResponseError('CLOUD6 backend response was not valid JSON');
   }
 }

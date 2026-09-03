@@ -48,6 +48,12 @@ interface UseJourneyResult extends UseJourneyState {
 const DEFAULT_PERSONA: Persona = 'runner';
 const DEFAULT_TIME: TimeOfDay = 'flexible';
 
+function devLog(...args: unknown[]): void {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.log('[Cloud6 Journey]', ...args);
+  }
+}
+
 /**
  * Thin orchestration hook: uses LocationService for the start point,
  * GeocodingService for destination text search, routingService for the
@@ -88,14 +94,17 @@ export function useJourney(): UseJourneyResult {
     setJourneyPlan(null);
     setJourneyWeather(null);
     setJourneyIntelligence(null);
+    devLog('geocoding destination:', query);
     try {
       const [point] = await geocodingService.geocode(query);
+      devLog('geocoding result:', point ?? 'no results');
       if (!point) {
         setError(new LocationError('GEOCODING_FAILED', `No results for "${query}"`));
         return;
       }
       setDestination(point);
     } catch (cause) {
+      devLog('geocoding error:', cause);
       setError(cause instanceof LocationError ? cause : new LocationError('GEOCODING_FAILED'));
     } finally {
       setLoading(false);
@@ -128,10 +137,13 @@ export function useJourney(): UseJourneyResult {
     setJourneyPlan(null);
     setJourneyWeather(null);
     setJourneyIntelligence(null);
+    devLog('route request:', start, '->', destination);
     try {
       const result = await routingService.getRoute(start, destination);
+      devLog('route result: distanceKm=', result.distanceKm, 'durationMinutes=', result.durationMinutes);
       setRoute(result);
     } catch (cause) {
+      devLog('route error:', cause);
       setError(cause instanceof RouteError ? cause : new RouteError('ROUTE_PROVIDER_ERROR'));
     } finally {
       setLoading(false);
@@ -150,10 +162,13 @@ export function useJourney(): UseJourneyResult {
     setError(null);
     setJourneyWeather(null);
     setJourneyIntelligence(null);
+    devLog('journey plan request');
     try {
       const plan = await journeyService.planJourney(route);
+      devLog('journey plan result: checkpoint count=', plan.checkpoints.length);
       setJourneyPlan(plan);
     } catch (cause) {
+      devLog('journey plan error:', cause);
       setError(cause instanceof JourneyError ? cause : new JourneyError('JOURNEY_INVALID_ROUTE'));
     } finally {
       setLoading(false);
@@ -174,10 +189,18 @@ export function useJourney(): UseJourneyResult {
     setLoading(true);
     setError(null);
     setJourneyIntelligence(null);
+    devLog('weather request for', journeyPlan.checkpoints.length, 'checkpoints');
     try {
       const weatherPlan = await journeyService.getJourneyWeather(journeyPlan);
+      devLog(
+        'weather result: available=',
+        weatherPlan.summary.weatherAvailableCheckpoints,
+        'unavailable=',
+        weatherPlan.summary.weatherUnavailableCheckpoints,
+      );
       setJourneyWeather(weatherPlan);
     } catch (cause) {
+      devLog('weather error:', cause);
       setError(cause instanceof JourneyError ? cause : new JourneyError('JOURNEY_INVALID_ROUTE'));
     } finally {
       setLoading(false);
@@ -202,14 +225,22 @@ export function useJourney(): UseJourneyResult {
 
     setLoading(true);
     setError(null);
+    devLog('intelligence request: persona=', persona, 'preferredTimeOfDay=', preferredTimeOfDay);
     try {
       const context = await personalizationService.createUserContext({
         persona,
         preferredTimeOfDay,
       });
       const intelligence = await journeyService.getJourneyIntelligence(journeyWeather, context);
+      devLog(
+        'intelligence result: riskLevel=',
+        intelligence.analysis.riskLevel,
+        'recommendation=',
+        intelligence.recommendation?.title,
+      );
       setJourneyIntelligence(intelligence);
     } catch (cause) {
+      devLog('intelligence error:', cause);
       setError(
         cause instanceof JourneyError || cause instanceof PersonalizationError
           ? cause

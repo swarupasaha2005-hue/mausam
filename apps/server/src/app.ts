@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 
+import { geocodingRouter } from './routes/geocoding';
 import { healthRouter } from './routes/health';
 import { journeyRouter } from './routes/journey';
 import { journeyIntelligenceRouter } from './routes/journeyIntelligence';
@@ -16,6 +17,7 @@ app.use(cors());
 app.use(express.json());
 app.use(healthRouter);
 app.use('/api/weather', weatherRouter);
+app.use('/api/geocoding', geocodingRouter);
 app.use('/api/personalization', personalizationRouter);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/routes', routesRouter);

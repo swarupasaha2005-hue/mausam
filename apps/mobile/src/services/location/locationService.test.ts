@@ -69,8 +69,32 @@ describe('LocationService', () => {
       expect(result).toEqual<GeoPoint>({ latitude: 12.34, longitude: 56.78 });
     });
 
-    it('throws LOCATION_PERMISSION_DENIED when permission is not granted', async () => {
+    it('throws LOCATION_PERMISSION_DENIED when permission is denied and does not re-prompt', async () => {
       const provider = createProvider({ checkPermission: jest.fn().mockResolvedValue('denied') });
+      const service = new LocationService(provider);
+      await expect(service.getCurrentLocation()).rejects.toMatchObject({
+        code: 'LOCATION_PERMISSION_DENIED',
+      });
+      expect(provider.requestPermission).not.toHaveBeenCalled();
+      expect(provider.getCurrentPosition).not.toHaveBeenCalled();
+    });
+
+    it('actively requests permission when status is undetermined, rather than failing immediately', async () => {
+      const provider = createProvider({
+        checkPermission: jest.fn().mockResolvedValue('undetermined'),
+        requestPermission: jest.fn().mockResolvedValue('granted'),
+      });
+      const service = new LocationService(provider);
+      const result = await service.getCurrentLocation();
+      expect(provider.requestPermission).toHaveBeenCalledTimes(1);
+      expect(result).toEqual<GeoPoint>({ latitude: 22.5726, longitude: 88.3639 });
+    });
+
+    it('throws LOCATION_PERMISSION_DENIED if the user declines the prompt triggered from undetermined', async () => {
+      const provider = createProvider({
+        checkPermission: jest.fn().mockResolvedValue('undetermined'),
+        requestPermission: jest.fn().mockResolvedValue('denied'),
+      });
       const service = new LocationService(provider);
       await expect(service.getCurrentLocation()).rejects.toMatchObject({
         code: 'LOCATION_PERMISSION_DENIED',
