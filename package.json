@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "npm run build --workspace @cloud6/shared",
     "dev": "npm run dev --workspace @cloud6/server",
     "mobile": "npm run start --workspace @cloud6/mobile",
     "server": "npm run dev --workspace @cloud6/server",

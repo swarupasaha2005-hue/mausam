@@ -4,6 +4,9 @@
   "private": true,
   "description": "CLOUD6 backend — Express + TypeScript",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc -p tsconfig.json",
